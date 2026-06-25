@@ -19,6 +19,7 @@ from pathlib import Path
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import rasterio
+from rasterio.enums import ColorInterp
 from rasterio.io import DatasetReader
 from rasterio.transform import from_origin
 from rasterio.windows import Window, from_bounds
@@ -60,38 +61,55 @@ def _tile_window(src: DatasetReader, geom: BaseGeometry) -> Window:
     return from_bounds(*geom.bounds, transform=src.transform).round_offsets().round_lengths()
 
 
-def _read_rgb(src: DatasetReader, win: Window) -> tuple["object", bool]:
-    """Read RGB (+ alpha if present) for a window. Returns (data, has_alpha)."""
-    has_alpha = src.count > 3
-    idxs = [1, 2, 3] + ([src.count] if has_alpha else [])
-    data = src.read(idxs, window=win, boundless=True, fill_value=0)
-    return data, has_alpha
+def _alpha_index(src: DatasetReader) -> int | None:
+    """1-based index of the alpha band (via colour interpretation), or None."""
+    for i, ci in enumerate(src.colorinterp, start=1):
+        if ci == ColorInterp.alpha:
+            return i
+    return None
 
 
-def _is_covered(data, has_alpha: bool) -> bool:
-    """True if the tile has any data: alpha>0 when present, else any non-zero RGB pixel."""
-    return bool((data[3] > 0).any() if has_alpha else (data[:3] != 0).any())
+def _data_bands(src: DatasetReader, bands: list[int] | None, alpha_idx: int | None) -> list[int]:
+    """Band indices to write: caller's `bands`, else every band except the alpha band."""
+    if bands is not None:
+        return list(bands)
+    return [i for i in range(1, src.count + 1) if i != alpha_idx]
 
 
-def _write_tile(out_path: Path, rgb, src: DatasetReader, win: Window) -> None:
-    """Write a 3-band RGB window as a compressed, tiled, georeferenced GeoTIFF."""
+def _is_covered(data, alpha, nodata) -> bool:
+    """True if the tile holds real data: alpha>0 if present, else any non-nodata pixel."""
+    if alpha is not None:
+        return bool((alpha > 0).any())
+    if nodata is not None:
+        return bool((data != nodata).any())
+    return bool((data != 0).any())
+
+
+def _write_tile(out_path: Path, data, src: DatasetReader, win: Window, indexes: list[int]) -> None:
+    """Write the selected bands of a window as a compressed, tiled, georeferenced GeoTIFF."""
     with rasterio.open(
         out_path, "w", driver="GTiff",
-        width=rgb.shape[2], height=rgb.shape[1], count=3, dtype=rgb.dtype,
-        crs=src.crs, transform=src.window_transform(win),
+        width=data.shape[2], height=data.shape[1], count=data.shape[0], dtype=data.dtype,
+        crs=src.crs, transform=src.window_transform(win), nodata=src.nodata,
         compress="deflate", tiled=True,
     ) as dst:
-        dst.write(rgb)
+        dst.write(data)
+        dst.colorinterp = [src.colorinterp[i - 1] for i in indexes]
 
 
 def download_grid(
     grid: gpd.GeoDataFrame,
     webmap: str,
     out_dir: str | Path,
+    bands: list[int] | None = None,
     workers: int = 8,
     skip_empty: bool = True,
 ) -> list[str]:
     """Download every tile of `grid` from `webmap` (S3) into out_dir as GeoTIFFs.
+
+    `bands` selects 1-based bands to write (e.g. [1,2,3] RGB, [1,2,3,4] RGB+NIR, [1] a
+    mask); default None writes every band except the alpha band. Coverage for skip_empty
+    uses the alpha band if present, else the raster's nodata, else any non-zero pixel.
 
     Parallel ranged reads (I/O-bound; GDAL drops the GIL). rasterio handles are NOT
     thread-safe, so each worker thread opens its own (thread-local). Returns written names.
@@ -106,12 +124,18 @@ def download_grid(
         src = getattr(local, "src", None)
         if src is None:
             src = local.src = rasterio.open(path)
+            local.alpha_idx = _alpha_index(src)
+            local.indexes = _data_bands(src, bands, local.alpha_idx)
         win = _tile_window(src, geom)
-        data, has_alpha = _read_rgb(src, win)
-        if skip_empty and not _is_covered(data, has_alpha):
-            return None
+        data = src.read(local.indexes, window=win, boundless=True, fill_value=0)
+        if skip_empty:
+            alpha = None
+            if local.alpha_idx is not None:
+                alpha = src.read(local.alpha_idx, window=win, boundless=True, fill_value=0)
+            if not _is_covered(data, alpha, src.nodata):
+                return None
         out = out_dir / f"tile_{idx:05d}.tif"
-        _write_tile(out, data[:3], src, win)
+        _write_tile(out, data, src, win, local.indexes)
         return out.name
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -149,7 +173,9 @@ def preview_tiles(tiles_dir: str | Path, downscale: int = 16, ax=None, out_png: 
     for f in files:
         with rasterio.open(f) as src:
             h, w = max(1, src.height // downscale), max(1, src.width // downscale)
-            thumb = src.read([1, 2, 3], out_shape=(3, h, w)).transpose(1, 2, 0)
+            sel = [1, 2, 3] if src.count >= 3 else [1]  # RGB if available, else grayscale
+            thumb = src.read(sel, out_shape=(len(sel), h, w)).transpose(1, 2, 0)
+            thumb = thumb[:, :, 0] if thumb.shape[2] == 1 else thumb
             left, bottom, right, top = src.bounds
         ax.imshow(thumb, extent=(left, right, bottom, top), origin="upper")
     ax.set_aspect("equal")
@@ -186,12 +212,13 @@ if __name__ == "__main__":
     plot_grid(grid, study_area, "study_area", "grid.png", CONFIG["patch"], CONFIG["res"])
 
     # 3) download a small slice first to confirm S3 auth + extent (medium) --------------
+    #    bands=None -> every band except alpha; [1,2,3]=RGB-only, [1,2,3,4]=RGB+NIR, [1]=mask.
     sample = grid.iloc[:20]
-    written = download_grid(sample, CONFIG["webmap"], CONFIG["out_dir"], workers=8)
+    written = download_grid(sample, CONFIG["webmap"], CONFIG["out_dir"], bands=[1, 2, 3], workers=8)
     print(f"wrote {len(written)} non-empty tiles (of {len(sample)})")
 
     # 4) full download (expensive) -----------------------------------------------------
-    written = download_grid(grid, CONFIG["webmap"], CONFIG["out_dir"], workers=8)
+    written = download_grid(grid, CONFIG["webmap"], CONFIG["out_dir"], bands=[1, 2, 3], workers=8)
 
     # 5) coarse preview of what landed -------------------------------------------------
     preview_tiles(CONFIG["out_dir"], downscale=16, out_png="preview.png")
