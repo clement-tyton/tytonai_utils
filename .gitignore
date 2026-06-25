@@ -1,0 +1,32 @@
+# ── Secrets — NEVER commit ──────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ── uv / venv ───────────────────────────────────────────────────────────────
+.venv/
+venv/
+
+# ── Caches / tooling ────────────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.pyright/
+
+# ── Local data / downloads ──────────────────────────────────────────────────
+data/
+downloads/
+*.npz
+*.tif
+*.tiff
