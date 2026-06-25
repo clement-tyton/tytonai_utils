@@ -16,6 +16,7 @@ webmap = [
     "geopandas>=1.0.0",
     "rasterio>=1.3.0",
     "matplotlib>=3.8.0",
+    "rio_tiler>=6.0.0",     # required by bbox_to_tile_grid but not declared by it
     "bbox_to_tile_grid",    # bbox -> tile grid, pulled from git (source below)
 ]
 # Features 2-4 — manifest / model downloads via the S3 API.
