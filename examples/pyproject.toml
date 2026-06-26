@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MINIMAL CONSUMER pyproject.toml
+#
+# Copy this into any project that wants to use tytonai_utils. It is the smallest
+# config needed to `uv sync` the package straight from GitHub.
+#
+# `[webmap,s3,model]` pulls every feature's deps — trim the extras to only what you
+# use (e.g. `tytonai_utils[webmap]` for tiling only). This file is kept in sync with
+# the package: each new facility updates the extras list here.
+#
+# After editing:  uv sync
+# To re-pull a new commit of the package:  uv lock --upgrade-package tytonai_utils && uv sync
+# ─────────────────────────────────────────────────────────────────────────────
+
+[project]
+name = "test-install"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "tytonai_utils[webmap,s3,model,viz]",
+]
+
+[tool.uv.sources]
+tytonai_utils = { git = "https://github.com/clement-tyton/tytonai_utils.git" }

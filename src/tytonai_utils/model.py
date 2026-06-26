@@ -9,12 +9,13 @@ A model config (JSON) describes a segmentation_models_pytorch (smp) model:
 - epoch_file_key         s3://bucket/key.pth    -> the trained weights
 
 Entry points:
-- download_model_weights_from_config   -> pull the trained .pth from S3 (`s3` extra).
-- build_model_from_config              -> fresh architecture: ImageNet encoder + random
-  head, or fully random (`model` extra: torch + smp).
-- load_model_from_config               -> build + load trained weights; pass num_classes
-  for transfer learning (new head, encoder/decoder loaded via strict=False).
-- download_and_load_model_from_config  -> one call: download then load (both extras).
+- download_model_weights_from_config       -> pull the trained .pth from S3 (`s3` extra).
+- build_model_from_config                  -> fresh architecture (no checkpoint): ImageNet
+  encoder + random head, or fully random (`model` extra: torch + smp).
+- load_trained_model_from_config           -> the model EXACTLY as trained (full weights,
+  head included); errors unless the checkpoint class count matches the config.
+- load_model_with_fresh_head_from_config   -> finetune: reuse encoder + decoder, fresh
+  RANDOM head sized to num_classes (for a different class set).
 
 Heavy deps (boto3, torch, smp) are imported lazily so this module loads with neither extra.
 """
@@ -111,54 +112,87 @@ def _extract_state_dict(checkpoint) -> dict:
     return checkpoint  # assume it is already a state-dict
 
 
-def load_model_from_config(
+_HEAD_PREFIX = "segmentation_head"
+
+
+def _checkpoint_num_classes(state_dict: dict) -> int | None:
+    """Infer #classes from the checkpoint's segmentation-head conv weight, or None."""
+    weight = state_dict.get(f"{_HEAD_PREFIX}.0.weight")
+    return None if weight is None else weight.shape[0]
+
+
+def _freeze_encoder(model: "nn.Module") -> None:
+    """Set requires_grad=False on every encoder parameter (in place)."""
+    for param in model.encoder.parameters():
+        param.requires_grad = False
+
+
+def load_trained_model_from_config(
+    config_path: str | Path,
+    weights_path: str | Path,
+    freeze_encoder: bool = False,
+    map_location: str = "cpu",
+) -> "nn.Module":
+    """Load the model EXACTLY as trained: full weights including the segmentation head.
+
+    Only valid when the checkpoint's class count matches the config's class_list (which
+    also guarantees class alignment, since you load with the same config that produced the
+    weights). Raises if they differ — use load_model_with_fresh_head_from_config instead.
+    Loads strictly so any key mismatch is a loud error. Requires the `model` extra.
+    """
+    import torch
+
+    cfg = read_model_config(config_path)
+    n_classes = len(cfg["class_list"])
+    state_dict = _extract_state_dict(torch.load(weights_path, map_location=map_location))
+    ckpt_classes = _checkpoint_num_classes(state_dict)
+    if ckpt_classes is not None and ckpt_classes != n_classes:
+        raise ValueError(
+            f"checkpoint head has {ckpt_classes} classes but config.class_list has "
+            f"{n_classes}; use load_model_with_fresh_head_from_config for a different "
+            f"class set."
+        )
+    model = build_model_from_config(config_path, pretrained_encoder=False)
+    model.load_state_dict(state_dict, strict=True)
+    if freeze_encoder:
+        _freeze_encoder(model)
+    print(f"[model] loaded trained model ({n_classes} classes) <- {weights_path}")
+    return model
+
+
+def load_model_with_fresh_head_from_config(
     config_path: str | Path,
     weights_path: str | Path,
     num_classes: int | None = None,
     freeze_encoder: bool = False,
-    strict: bool = False,
     map_location: str = "cpu",
 ) -> "nn.Module":
-    """Build the config's architecture and load trained weights from a .pth checkpoint.
+    """Finetune setup: reuse the checkpoint's encoder + decoder, with a fresh RANDOM head.
 
-    Transfer learning: pass `num_classes` to get a fresh head of that size — with
-    strict=False the checkpoint's encoder + decoder load while the mismatched head stays
-    randomly initialised. `freeze_encoder` sets requires_grad=False on the encoder.
-    Returns a torch.nn.Module. Requires the `model` extra.
+    The head is sized to `num_classes` (defaults to len(class_list)) and left randomly
+    initialised — use this when the class set differs from the checkpoint's. Head weights
+    in the checkpoint are dropped; everything else must load, otherwise it raises (so a key
+    mismatch can't silently yield a random model). Requires the `model` extra.
     """
     import torch
 
-    model = build_model_from_config(config_path, pretrained_encoder=False, num_classes=num_classes)
+    cfg = read_model_config(config_path)
+    classes = num_classes if num_classes is not None else len(cfg["class_list"])
+    model = build_model_from_config(config_path, pretrained_encoder=False, num_classes=classes)
     state_dict = _extract_state_dict(torch.load(weights_path, map_location=map_location))
-    result = model.load_state_dict(state_dict, strict=strict)
+    body = {k: v for k, v in state_dict.items() if not k.startswith(_HEAD_PREFIX)}
+    result = model.load_state_dict(body, strict=False)
+    missing_non_head = [k for k in result.missing_keys if not k.startswith(_HEAD_PREFIX)]
+    if result.unexpected_keys or missing_non_head:
+        raise ValueError(
+            f"fresh-head load mismatch beyond the head: unexpected="
+            f"{result.unexpected_keys[:5]}, missing(non-head)={missing_non_head[:5]}. "
+            f"Checkpoint keys may not match the smp model (e.g. a key prefix)."
+        )
     if freeze_encoder:
-        for param in model.encoder.parameters():
-            param.requires_grad = False
-    print(
-        f"[model] loaded {weights_path} "
-        f"(missing={len(result.missing_keys)}, unexpected={len(result.unexpected_keys)})"
-    )
+        _freeze_encoder(model)
+    print(f"[model] loaded encoder+decoder, fresh random head ({classes} classes) <- {weights_path}")
     return model
-
-
-def download_and_load_model_from_config(
-    config_path: str | Path,
-    weights_dir: str | Path,
-    num_classes: int | None = None,
-    freeze_encoder: bool = False,
-    strict: bool = False,
-    force: bool = False,
-) -> "nn.Module":
-    """One call: download the config's weights from S3, then load them into the model.
-
-    Convenience wrapper over download_model_weights_from_config + load_model_from_config.
-    Requires both the `s3` and `model` extras.
-    """
-    weights_path = download_model_weights_from_config(config_path, weights_dir, force=force)
-    return load_model_from_config(
-        config_path, weights_path, num_classes=num_classes,
-        freeze_encoder=freeze_encoder, strict=strict,
-    )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -189,11 +223,11 @@ if __name__ == "__main__":
     weights = download_model_weights_from_config(CONFIG["config_path"], CONFIG["out_dir"])
     print("weights ->", weights)
 
-    # 4) load the trained model as-is (same classes as the checkpoint) ------------------
-    trained = load_model_from_config(CONFIG["config_path"], weights)
+    # 4) load the trained model EXACTLY as trained (full weights, head included) ---------
+    #    raises if the checkpoint's class count != config.class_list
+    trained = load_trained_model_from_config(CONFIG["config_path"], weights)
 
-    # 5) transfer learning: keep encoder/decoder weights, fresh head for N new classes --
-    transfer = load_model_from_config(CONFIG["config_path"], weights, num_classes=3, freeze_encoder=True)
-
-    # one-call equivalent of 3+4: download then load -----------------------------------
-    model = download_and_load_model_from_config(CONFIG["config_path"], CONFIG["out_dir"])
+    # 5) finetune: reuse encoder+decoder, fresh random head for N new classes ------------
+    finetune = load_model_with_fresh_head_from_config(
+        CONFIG["config_path"], weights, num_classes=3, freeze_encoder=True
+    )

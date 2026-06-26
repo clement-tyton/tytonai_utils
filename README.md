@@ -9,18 +9,23 @@ GitHub across projects.
 1. **Web map import** — cut local GeoTIFF tiles from an S3 web map (any band layout). ✅
 2. **Manifest import** — download tiles listed in a manifest (image + mask `.npz`). ✅
 3. **Model fetch** — download trained weights, or build a fresh model, from a config. ✅
-4. **Mask rollup** — remap annotation-mask categories. 🚧
+4. **Mask rollup** — remap annotation-mask class ids to parent categories. ✅
 
 ---
 
 ## Install
 
-Install from GitHub. Pick the extras for the features you need:
+Install from GitHub. The **minimal consumer `pyproject.toml`** is kept in the repo at
+[`examples/pyproject.toml`](examples/pyproject.toml) — copy it into your project and trim
+the extras to the features you use. It is updated whenever a new facility is added.
 
 ```toml
-# consumer pyproject.toml
+# minimal consumer pyproject.toml (see examples/pyproject.toml)
 [project]
-dependencies = ["tytonai_utils[webmap]"]   # or [s3], or [all]
+name = "your-project"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = ["tytonai_utils[webmap,s3,model]"]   # trim extras as needed
 
 [tool.uv.sources]
 tytonai_utils = { git = "https://github.com/clement-tyton/tytonai_utils.git" }
@@ -37,6 +42,7 @@ uv lock --upgrade-package tytonai_utils && uv sync
 | `webmap` | geopandas, rasterio, matplotlib, rio_tiler, bbox_to_tile_grid | Feature 1 |
 | `s3` | boto3 | Features 2–4 (S3 API) |
 | `model` | torch, segmentation-models-pytorch, timm | Feature 3 (build/load model) |
+| `viz` | matplotlib | Visualization helpers (image/mask QA plots) |
 | `all` | everything above | — |
 
 ---
@@ -243,22 +249,33 @@ functions need the `model` extra (`torch` + `segmentation-models-pytorch`).
 from dotenv import load_dotenv
 from tytonai_utils.model import (
     build_model_from_config,
-    download_and_load_model_from_config,
-    load_model_from_config,
+    download_model_weights_from_config,
+    load_model_with_fresh_head_from_config,
+    load_trained_model_from_config,
 )
 
 load_dotenv()
 
-# fresh model: ImageNet encoder + random head
+# fresh model, no checkpoint: ImageNet encoder + random head
 fresh = build_model_from_config("model_config.json")
 
-# download trained weights + load them (one call)
-model = download_and_load_model_from_config("model_config.json", "models/")
+# download the trained weights, then load — choose ONE of the two load modes:
+weights = download_model_weights_from_config("model_config.json", "models/")
 
-# transfer learning: keep trained encoder/decoder, new 3-class head, frozen encoder
-tl = load_model_from_config("model_config.json", "models/weights.pth",
-                            num_classes=3, freeze_encoder=True)
+# (a) exactly as trained — full weights incl. head (same classes as the checkpoint)
+trained = load_trained_model_from_config("model_config.json", weights)
+
+# (b) finetune — reuse encoder+decoder, fresh random head for a new 3-class set
+finetune = load_model_with_fresh_head_from_config(
+    "model_config.json", weights, num_classes=3, freeze_encoder=True
+)
 ```
+
+> **Which load function?** Only the segmentation head depends on the class count; the
+> encoder and decoder always transfer. Use `load_trained_model_from_config` when you want
+> the model as-is (it errors if the checkpoint's class count differs). Use
+> `load_model_with_fresh_head_from_config` when the class set changes — it reuses
+> encoder+decoder and leaves a fresh random head.
 
 ### Functions
 
@@ -281,23 +298,128 @@ the head size (else `len(class_list)`). (`model` extra.)
 | `pretrained_encoder` | `bool` | Load ImageNet encoder weights (head always random) |
 | `num_classes` | `int \| None` | Override the head class count |
 
-#### `load_model_from_config(config_path, weights_path, num_classes=None, freeze_encoder=False, strict=False, map_location="cpu") -> nn.Module`
-Build the config's architecture and load trained weights from a `.pth`. Handles wrapped
+#### `load_trained_model_from_config(config_path, weights_path, freeze_encoder=False, map_location="cpu") -> nn.Module`
+Load the model **exactly as trained** — full weights including the segmentation head.
+Loads strictly. **Raises** if the checkpoint's class count differs from the config's
+`class_list` (use the fresh-head function for a different class set). Handles wrapped
 checkpoints (`{"model": …}` from Fabric/training loops) and plain state-dicts.
 
 | Param | Type | Description |
 |---|---|---|
 | `config_path` | `str \| Path` | Model config JSON |
 | `weights_path` | `str \| Path` | Local `.pth` checkpoint (from the download fn) |
-| `num_classes` | `int \| None` | New head size for transfer learning; with `strict=False` the encoder/decoder load and the mismatched head stays random |
 | `freeze_encoder` | `bool` | Set `requires_grad=False` on the encoder |
-| `strict` | `bool` | `load_state_dict` strictness (keep `False` when changing classes) |
 | `map_location` | `str` | Device for `torch.load` (e.g. `"cpu"`, `"cuda"`) |
 
-Returns the model; prints missing/unexpected key counts. (`model` extra.)
+#### `load_model_with_fresh_head_from_config(config_path, weights_path, num_classes=None, freeze_encoder=False, map_location="cpu") -> nn.Module`
+Finetune setup: reuse the checkpoint's **encoder + decoder**, with a **fresh random head**
+sized to `num_classes` (defaults to `len(class_list)`). Head weights in the checkpoint are
+dropped; everything else must load or it **raises** (so a key mismatch can't silently
+produce a random model).
 
-#### `download_and_load_model_from_config(config_path, weights_dir, num_classes=None, freeze_encoder=False, strict=False, force=False) -> nn.Module`
-One call: `download_model_weights_from_config` then `load_model_from_config`. (Both extras.)
+| Param | Type | Description |
+|---|---|---|
+| `config_path` | `str \| Path` | Model config JSON |
+| `weights_path` | `str \| Path` | Local `.pth` checkpoint |
+| `num_classes` | `int \| None` | New head size (else `len(class_list)`) |
+| `freeze_encoder` | `bool` | Set `requires_grad=False` on the encoder |
+| `map_location` | `str` | Device for `torch.load` |
+
+---
+
+## Feature 4 — Mask rollup (`tytonai_utils.rollup`)
+
+Remap annotation-mask class ids to parent categories. The **grouping** (which source classes
+roll into which parent) is the source of truth; a remapping is that grouping + a **number
+scheme** (`{parent_name: id}`). Ids not in the grouping go to a `nodata` value (default `0`).
+Pure numpy + stdlib — **no extra needed**.
+
+Two R&D schemes ship in the module:
+- **7-class** — Ground, Shrub, Tree, Herb, Sedge, Tussock, Hummock (`RND_REMAP_7CLASS`).
+- **6-class** — same, but Tussock + Hummock + generic Grass fold into Grass (`RND_REMAP_6CLASS`).
+
+In both, unmapped classes (Biotic, Not Erosion, Erosion — plus Grass in the 7-class) → `nodata`.
+
+### Quick start
+
+```python
+from tytonai_utils.rollup import RND_REMAP_7CLASS, rollup_mask, rollup_annotations
+
+remapped = rollup_mask(mask, RND_REMAP_7CLASS)              # one numpy mask
+rollup_annotations("annotations/", "dataset.json",          # a whole folder
+                   RND_REMAP_7CLASS, out_dir="annotations_rnd7/")
+```
+
+### Data
+
+| Name | What |
+|---|---|
+| `CLASS_NAMES` | source `{id: name}` (the org class list) |
+| `ROLLUP_GROUPS_7CLASS` / `ROLLUP_GROUPS_6CLASS` | `{parent_name: [source_ids]}` groupings |
+| `RND_TARGET_IDS_7CLASS` / `_6CLASS` | `{parent_name: target_id}` number schemes |
+| `RND_REMAP_7CLASS` / `_6CLASS` | materialized `{source_id: target_id}` |
+| `RND_NAMES_7CLASS` / `_6CLASS` | target `{id: name}` for the remapped masks |
+| `NODATA` | value for unmapped ids (default `0`) |
+
+### Functions
+
+#### `build_remapping(groups, target_ids) -> dict[int, int]`
+Flatten a grouping (`{name: [source_ids]}`) + a number scheme (`{name: id}`) into a
+`{source_id: target_id}` dict. Use this to define a new remapping that reuses an existing
+grouping with different numbers.
+
+#### `target_id_to_name(groups, target_ids) -> dict[int, str]`
+The remapped class list as `{target_id: parent_name}`.
+
+#### `rollup_mask(mask, remapping, nodata=0) -> np.ndarray`
+Vectorized remap of one integer mask. Ids not in `remapping` → `nodata` (pass `nodata=None`
+to keep them unchanged). Returns a new array of the same dtype; input untouched.
+
+#### `rollup_annotations(annotations_dir, manifest, remapping, out_dir, mask_key=None, nodata=0) -> list[Path]`
+Roll up every mask `.npz` referenced by a manifest, writing remapped masks to `out_dir`.
+Imagery files untouched; mask array key auto-detected (largest) unless `mask_key` given.
+
+| Param | Type | Description |
+|---|---|---|
+| `annotations_dir` | `str \| Path` | Folder of downloaded mask `.npz` |
+| `manifest` | `list[dict] \| str \| Path` | Tile list or path to `dataset.json` |
+| `remapping` | `dict[int,int]` | `{source_id: target_id}` (e.g. `RND_REMAP_7CLASS`) |
+| `out_dir` | `str \| Path` | Output folder for remapped masks |
+| `mask_key` | `str \| None` | NPZ mask key; auto-detected if `None` |
+| `nodata` | `int \| None` | Value for unmapped ids (default `0`; `None` = keep) |
+
+---
+
+## Visualization helpers
+
+Quick QA plots. The web map helpers live in `tytonai_utils.webmap`; the image/mask helper
+lives in `tytonai_utils.viz`. matplotlib comes from the `viz` (or `webmap`) extra.
+
+#### `webmap.preview_tiles(tiles_dir, downscale=16, ax=None, out_png=None) -> Axes`
+Downscaled overview mosaic of downloaded `.tif` tiles, placed at their real geo-extent.
+Handles RGB (3+ bands) and single-band greyscale. Save with `out_png`. (See Feature 1.)
+
+#### `webmap.plot_grid(grid, study_area, name, out_png, patch, res) -> None`
+Draw the tile grid over the study-area outline — no download needed. (See Feature 1.)
+
+#### `viz.plot_image_mask_pairs(annotations_dir, manifest, indexes=None, n=6, out_png=None, image_key=None, mask_key=None, bands=(0,1,2), cmap="tab20", seed=0) -> Figure`
+Plot imagery tiles next to their annotation masks (the `.npz` pairs from Feature 2) for
+visual QA. Select specific `indexes`, else `n` random tiles (seeded). Array keys are
+auto-detected (largest array per file) unless `image_key`/`mask_key` are given.
+
+| Param | Type | Description |
+|---|---|---|
+| `annotations_dir` | `str \| Path` | Folder of downloaded imagery + mask `.npz` |
+| `manifest` | `list[dict] \| str \| Path` | Tile list (`read_manifest`) or path to `dataset.json` |
+| `indexes` | `list[int] \| None` | Tiles to show; `None` → `n` random |
+| `n` | `int` | Number of random tiles when `indexes` is `None` |
+| `out_png` | `str \| Path \| None` | Save the figure if given |
+| `image_key` / `mask_key` | `str \| None` | NPZ array keys; auto-detected if `None` |
+| `bands` | `tuple[int,...]` | Which image channels to render as RGB |
+| `cmap` | `str` | Colormap for the mask (categorical) |
+| `seed` | `int` | RNG seed for reproducible random selection |
+
+Returns the matplotlib `Figure`.
 
 ---
 
