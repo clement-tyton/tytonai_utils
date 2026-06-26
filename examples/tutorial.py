@@ -40,6 +40,8 @@ CONFIG = {
     "annotations": Path("downloads/annotations"),
     "annotations_rnd7": Path("downloads/annotations_rnd7"),
     "models": Path("downloads/models"),
+    "resolution": 0.022,  # web map native resolution (m/px); match the annotation resolution
+    "patch_size": 512,    # tile size in pixels
 }
 
 
@@ -52,9 +54,9 @@ from tytonai_utils.webmap import (
 )
 
 # 1a) build the grid from the vector area (cheap, local — no S3) --------------------
-#     res = the web map's native resolution (m/px) — read it in the tytonai app, in the
-#     same place you copy the S3 link. patch = tile size in pixels.
-grid, study_area = build_grid(CONFIG["fgb"], res=0.1, patch=512)
+#     resolution = the web map's native resolution (m/px) — read it in the tytonai app,
+#     in the same place you copy the S3 link. patch_size = tile size in pixels.
+grid, study_area = build_grid(CONFIG["fgb"], res=CONFIG["resolution"], patch=CONFIG["patch_size"])
 print(f"{len(grid)} tiles, CRS={study_area.crs}")
 
 # 1b) sanity-plot the grid over the area (saves grid.png) --------------------------
@@ -68,7 +70,7 @@ print(f"wrote {len(written)} tiles -> {CONFIG['tiles_out']}")
 
 # 1d) one-call equivalent (build grid + download in one) ---------------------------
 # written = download_webmap_from_shp(CONFIG["fgb"], CONFIG["webmap"], CONFIG["tiles_out"],
-#                                    res=0.1, patch=512, bands=[1, 2, 3])
+#                                    res=CONFIG["resolution"], patch=CONFIG["patch_size"], bands=[1, 2, 3])
 
 # 1e) overview mosaic of what landed (saves preview.png; RGB or greyscale) ---------
 preview_tiles(CONFIG["tiles_out"], downscale=16, out_png="preview.png")
@@ -153,7 +155,7 @@ print("compare mask_before.png vs mask_after.png")
 from tytonai_utils.align import realign_annotations_to_grid
 from tytonai_utils.viz import plot_image_mask_tiles
 
-ann_grid, _ = build_grid(CONFIG["fgb"], res=0.0206348504972787, patch=512)
+ann_grid, _ = build_grid(CONFIG["fgb"], res=CONFIG["resolution"], patch=CONFIG["patch_size"])
 
 # masks realigned to the grid: first-wins, plus a majority-vote variant for overlaps
 aligned = realign_annotations_to_grid(ann_grid, CONFIG["annotations"], CONFIG["manifest"],
