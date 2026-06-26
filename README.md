@@ -13,6 +13,12 @@ GitHub across projects.
 
 ---
 
+## Tutorial
+
+A full, runnable line-by-line walkthrough of **every feature** lives at
+[`examples/tutorial.py`](examples/tutorial.py) — it states the input files each section
+needs and is the fastest way to smoke-test the whole package after install.
+
 ## Install
 
 Install from GitHub. The **minimal consumer `pyproject.toml`** is kept in the repo at
