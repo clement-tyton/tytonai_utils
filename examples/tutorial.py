@@ -61,6 +61,8 @@ print(f"{len(grid)} tiles, CRS={study_area.crs}")
 plot_grid(grid, study_area, "study_area", "grid.png", patch=512, res=0.1)
 
 # 1c) download a 10-tile slice (confirms S3 auth + s3://->/vsis3 + ranged reads) ----
+#     bands: [1,2,3]=RGB webmap, [1]=single-band webmap (e.g. DSM), None=all bands.
+#     A 1-band DSM webmap with bands=[1,2,3] raises (only band 1 exists) -> use [1] or None.
 written = download_grid(grid.iloc[:10], CONFIG["webmap"], CONFIG["tiles_out"], bands=[1, 2, 3])
 print(f"wrote {len(written)} tiles -> {CONFIG['tiles_out']}")
 

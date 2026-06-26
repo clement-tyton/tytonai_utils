@@ -130,8 +130,9 @@ def download_grid(
             if out_of_range:
                 raise ValueError(
                     f"webmap has {src.count} band(s) (colorinterp="
-                    f"{[ci.name for ci in src.colorinterp]}); requested bands "
-                    f"{local.indexes} include out-of-range {out_of_range}"
+                    f"{[ci.name for ci in src.colorinterp]}); requested bands {local.indexes} "
+                    f"include out-of-range {out_of_range}. For a single-band raster (e.g. DSM) "
+                    f"pass bands=[1], or bands=None to download all available bands."
                 )
         win = _tile_window(src, geom)
         data = src.read(local.indexes, window=win, boundless=True, fill_value=0)
