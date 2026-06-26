@@ -126,8 +126,9 @@ def realign_annotations_to_grid(
     """Re-tile misaligned annotation masks onto `grid`, writing grid-aligned GeoTIFF masks.
 
     `grid` is a GeoDataFrame (from build_grid, or any tiling). Every manifest mask is
-    georeferenced (geotransform + srid), merged into one mosaic, then each grid cell is cut
-    from it. Cells with no annotation coverage are skipped when skip_empty. Output tiles are
+    georeferenced (geotransform + srid), merged into one mosaic. Only grid cells that intersect
+    the union of annotation footprints are cut (annotations are sparse, so this skips the empty
+    gaps cheaply); cells with no coverage are then dropped when skip_empty. Output tiles are
     named tile_NNNNN.tif by grid index, pairing with download_grid imagery. Returns names.
 
     `overlapping` resolves pixels covered by several (possibly contradicting) annotation sets:
@@ -146,6 +147,9 @@ def realign_annotations_to_grid(
 
     datasets, handles = _mask_datasets(annotations_dir, manifest, mask_key, nodata)
     try:
+        from shapely.geometry import box
+
+        footprints = [box(*ds.bounds) for ds in datasets]  # exact rectangle of each annotation tile
         mosaic, transform = _build_mosaic(datasets, nodata, overlapping)
         crs = datasets[0].crs
     finally:
@@ -157,14 +161,15 @@ def realign_annotations_to_grid(
     if getattr(grid, "crs", None) is not None and grid.crs != crs:
         grid = grid.to_crs(crs)
 
-    # Only grid cells overlapping the annotation mosaic extent can hold data — cut just those,
-    # not the whole (possibly huge) grid.
-    from shapely.geometry import box
+    # Annotations are sparse rectangles, not a filled bbox — pre-select only grid cells that
+    # intersect the ACTUAL union of annotation footprints, so we don't cut cells in the gaps.
+    from shapely.ops import unary_union
 
+    footprint = unary_union(footprints)  # multipolygon of the training areas
     left, top = transform.c, transform.f
     right, bottom = left + mosaic.shape[2] * transform.a, top - mosaic.shape[1] * abs(transform.e)
     grid_bounds = tuple(round(v, 1) for v in grid.total_bounds)
-    cells = grid[grid.intersects(box(left, bottom, right, top))]
+    cells = grid[grid.intersects(footprint)]
 
     profile = dict(
         driver="GTiff", height=mosaic.shape[1], width=mosaic.shape[2], count=1,
