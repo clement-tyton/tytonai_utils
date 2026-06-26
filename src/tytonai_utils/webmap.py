@@ -17,7 +17,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import rasterio
 from rasterio.enums import ColorInterp
 from rasterio.io import DatasetReader
@@ -178,15 +177,21 @@ def plot_grid(
     grid: gpd.GeoDataFrame, study_area: gpd.GeoDataFrame, name: str,
     out_png: str | Path, patch: int, res: float,
 ) -> None:
-    """Save a PNG of the tile grid (blue) over the study-area outline (red)."""
-    fig, ax = plt.subplots(figsize=(10, 6))
+    """Save a PNG of the tile grid (blue) over the study-area outline (red).
+
+    Renders via the non-interactive Agg backend (matplotlib.figure.Figure), so it never
+    creates GUI/Tk objects — safe to call alongside the threaded downloads.
+    """
+    from matplotlib.figure import Figure
+
+    fig = Figure(figsize=(10, 6))
+    ax = fig.subplots()
     grid.boundary.plot(ax=ax, color="tab:blue", linewidth=0.4)
     study_area.boundary.plot(ax=ax, color="tab:red", linewidth=1.5)
     ax.set_title(f"{name}: {len(grid)} tiles of {patch}px ({patch * res:.1f} m)")
     ax.set_aspect("equal")
     fig.tight_layout()
     fig.savefig(out_png, dpi=150)
-    plt.close(fig)
 
 
 def preview_tiles(tiles_dir: str | Path, downscale: int = 16, ax=None, out_png: str | Path | None = None):
@@ -197,8 +202,10 @@ def preview_tiles(tiles_dir: str | Path, downscale: int = 16, ax=None, out_png: 
     files = sorted(tiles_dir.glob("*.tif"))
     if not files:
         raise FileNotFoundError(f"no .tif tiles in {tiles_dir}")
-    if ax is None:
-        _, ax = plt.subplots(figsize=(9, 9))
+    if ax is None:  # standalone -> Agg Figure (no GUI/Tk objects)
+        from matplotlib.figure import Figure
+
+        ax = Figure(figsize=(9, 9)).subplots()
     for f in files:
         with rasterio.open(f) as src:
             h, w = max(1, src.height // downscale), max(1, src.width // downscale)
@@ -249,6 +256,5 @@ if __name__ == "__main__":
     # 4) full download (expensive) -----------------------------------------------------
     written = download_grid(grid, CONFIG["webmap"], CONFIG["out_dir"], bands=[1, 2, 3], workers=8)
 
-    # 5) coarse preview of what landed -------------------------------------------------
+    # 5) coarse preview of what landed (saved to preview.png — Agg, no GUI window) ------
     preview_tiles(CONFIG["out_dir"], downscale=16, out_png="preview.png")
-    plt.show()
