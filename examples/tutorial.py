@@ -133,10 +133,13 @@ print("6-class:", rollup_mask(fake, RND_REMAP_6CLASS).tolist())  # cenchrus/humm
 rollup_annotations(CONFIG["annotations"], CONFIG["manifest"], RND_REMAP_7CLASS, CONFIG["annotations_rnd7"])
 
 # 4d) verify: compare class ids before vs after on the same tile -------------------
+#     imagery stays in CONFIG["annotations"]; rolled-up masks are in annotations_rnd7,
+#     so point mask_dir there (rollup_annotations writes ONLY masks, not imagery).
 plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0],
-                      class_names=CLASS_NAMES, out_png="mask_before.png")          # source names
-plot_image_mask_pairs(CONFIG["annotations_rnd7"], CONFIG["manifest"], indexes=[0],
-                      class_names=RND_NAMES_7CLASS, out_png="mask_after.png")      # rolled-up names
+                      class_names=CLASS_NAMES, out_png="mask_before.png")              # source names
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0],
+                      mask_dir=CONFIG["annotations_rnd7"],
+                      class_names=RND_NAMES_7CLASS, out_png="mask_after.png")          # rolled-up names
 print("compare mask_before.png vs mask_after.png")
 
 

@@ -143,6 +143,7 @@ def plot_image_mask_pairs(
     indexes: list[int] | None = None,
     n: int = 6,
     out_png: str | Path | None = None,
+    mask_dir: str | Path | None = None,
     image_key: str | None = None,
     mask_key: str | None = None,
     bands: tuple[int, ...] = (0, 1, 2),
@@ -158,7 +159,9 @@ def plot_image_mask_pairs(
 
     Needs the manifest because each tile's image and mask are separate npz files referenced by
     it. RGB is composed from `rgb_keys`; set show_dsm=True to add a DSM panel. Selects `indexes`
-    else `n` random tiles (seeded). See plot_image_mask_tiles for paired .tif folders.
+    else `n` random tiles (seeded). `mask_dir` defaults to annotations_dir — point it at a
+    rolled-up folder (e.g. annotations_rnd7) to view remapped masks against the original imagery.
+    See plot_image_mask_tiles for paired .tif folders.
     """
     if class_names is None:  # default: label the legend with the org class names
         from tytonai_utils.rollup import CLASS_NAMES
@@ -169,6 +172,7 @@ def plot_image_mask_pairs(
 
         manifest = read_manifest(manifest)
     annotations_dir = Path(annotations_dir)
+    mask_dir = Path(mask_dir) if mask_dir is not None else annotations_dir
     indexes = _select(len(manifest), indexes, n, seed)
 
     imgs, dsms, masks, labels = [], [], [], []
@@ -177,7 +181,7 @@ def plot_image_mask_pairs(
         img_arrays = _load_npz_arrays(annotations_dir / tile["imagery_file"])
         imgs.append(_compose_rgb(img_arrays, image_key, bands, rgb_keys))
         dsms.append(_get_named(img_arrays, "DSM") if show_dsm else None)
-        masks.append(_pick_mask_array(_load_npz_arrays(annotations_dir / tile["mask_file"]), mask_key))
+        masks.append(_pick_mask_array(_load_npz_arrays(mask_dir / tile["mask_file"]), mask_key))
         labels.append(f"#{idx}")
     return _render_pairs(imgs, masks, labels, dsms=dsms, show_dsm=show_dsm,
                          class_names=class_names, cmap=cmap, dsm_cmap=dsm_cmap,
