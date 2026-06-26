@@ -147,8 +147,9 @@ def download_grid(
         return out.name
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
+        # name tiles by grid index (stable cell id) so a subset (grid.iloc[...]) keeps names
         results = list(
-            tqdm(ex.map(worker, enumerate(grid.geometry)), total=len(grid), desc=out_dir.name)
+            tqdm(ex.map(worker, grid.geometry.items()), total=len(grid), desc=out_dir.name)
         )
     return [r for r in results if r]
 

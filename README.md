@@ -155,9 +155,10 @@ Reads run in parallel (I/O-bound; each worker thread opens its own rasterio hand
 | `workers` | `int` | Parallel download threads (default 8) |
 | `skip_empty` | `bool` | Skip tiles with no coverage (alpha→nodata→nonzero) |
 
-Returns the list of written filenames (e.g. `["tile_00000.tif", …]`). Empty tiles are
-omitted. Output preserves the source `dtype`, `nodata`, CRS, and per-band colour
-interpretation — so masks stay clean integer rasters.
+Returns the list of written filenames, **named by grid index** (`tile_<cell index>.tif`), so a
+subset via `grid.iloc[...]` keeps matching names. Empty tiles are omitted. Output preserves the
+source `dtype`, `nodata`, CRS, and per-band colour interpretation — so masks stay clean integer
+rasters.
 
 #### `plot_grid(grid, study_area, name, out_png, patch, res) -> None`
 Save a PNG of the tile grid (blue) over the study-area outline (red) — a quick sanity
@@ -422,9 +423,19 @@ realign_annotations_to_grid(grid, "annotations/", "dataset.json", "masks_aligned
 
 > **Pairing rule.** Imagery (`download_grid`) and masks (`realign_annotations_to_grid`) must be
 > built from the **same grid object** (same `fgb`/`res`/`patch`) — both name tiles `tile_NNNNN.tif`
-> by grid-cell index, so a *different* grid (e.g. a different `res`) yields non-matching filenames
-> and `plot_image_mask_tiles` finds no pairs. Both steps skip empty cells; the intersection is the
-> set of cells that have both imagery and annotation.
+> by **grid index** (the cell's position in the GeoDataFrame), so a *different* grid (e.g. a
+> different `res`) yields non-matching filenames and `plot_image_mask_tiles` finds no pairs.
+>
+> **Cheap imagery for annotated cells only.** Because tiles are named by grid index, a subset
+> keeps its names: realign first to learn which cells have annotations, then download imagery for
+> just those cells —
+> ```python
+> aligned = realign_annotations_to_grid(grid, "annotations/", "dataset.json", "masks_aligned/")
+> cells = sorted(int(n.removeprefix("tile_").removesuffix(".tif")) for n in aligned)
+> download_grid(grid.iloc[cells], webmap, "tiles_aligned/", bands=[1, 2, 3])  # only those cells
+> ```
+> `grid.iloc[cells]` preserves the index labels, so `tiles_aligned/tile_NNNNN.tif` matches
+> `masks_aligned/tile_NNNNN.tif`.
 
 ### Functions
 

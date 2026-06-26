@@ -166,7 +166,8 @@ def realign_annotations_to_grid(
         with mm.open(**profile) as tmp:
             tmp.write(mosaic)
         with mm.open() as mosaic_ds:
-            for idx, geom in enumerate(tqdm(grid.geometry, total=len(grid), desc="cutting tiles")):
+            # name tiles by grid index (stable cell id) so it pairs with download_grid output
+            for idx, geom in tqdm(grid.geometry.items(), total=len(grid), desc="cutting tiles"):
                 win = from_bounds(*geom.bounds, transform=mosaic_ds.transform).round_offsets().round_lengths()
                 data = mosaic_ds.read(1, window=win, boundless=True, fill_value=nodata)
                 if skip_empty and not (data != nodata).any():

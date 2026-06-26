@@ -155,17 +155,19 @@ from tytonai_utils.viz import plot_image_mask_tiles
 
 ann_grid, _ = build_grid(CONFIG["fgb"], res=0.0206348504972787, patch=512)
 
-# imagery from the webmap on THIS grid (full grid -> can be many tiles; both steps skip empties)
-download_grid(ann_grid, CONFIG["webmap"], "downloads/tiles_aligned", bands=[1, 2, 3])
-
-# masks realigned to the SAME grid: first-wins, plus a majority-vote variant for overlaps
+# masks realigned to the grid: first-wins, plus a majority-vote variant for overlaps
 aligned = realign_annotations_to_grid(ann_grid, CONFIG["annotations"], CONFIG["manifest"],
                                       "downloads/masks_aligned")
 realign_annotations_to_grid(ann_grid, CONFIG["annotations"], CONFIG["manifest"],
                             "downloads/masks_aligned_vote", overlapping="vote")
 print(f"wrote {len(aligned)} grid-aligned mask tiles")
 
-# now imagery .tif and mask .tif pair by filename (intersection = cells with BOTH) ----------
+# imagery from the webmap ONLY for the annotated cells (cheap; names preserved by grid index
+# via grid.iloc -> pairs 1:1 with the masks). Pass the WHOLE ann_grid to cover all cells.
+cells = sorted(int(name.removeprefix("tile_").removesuffix(".tif")) for name in aligned)
+download_grid(ann_grid.iloc[cells], CONFIG["webmap"], "downloads/tiles_aligned", bands=[1, 2, 3])
+
+# now imagery .tif and mask .tif pair by filename (tile_<cell index>.tif) -------------------
 plot_image_mask_tiles("downloads/tiles_aligned", "downloads/masks_aligned", n=6,
                       out_png="pairs_aligned.png")
 print("saved pairs_aligned.png")
