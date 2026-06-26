@@ -46,7 +46,7 @@ def download_file(s3: BaseClient, key: str, dest: Path, bucket: str, force: bool
     return True
 
 
-def download_manifest(
+def download_annotations_from_dataset_manifest(
     manifest_path: str | Path,
     out_dir: str | Path,
     bucket: str | None = None,
@@ -106,4 +106,6 @@ if __name__ == "__main__":
     print("mask   :", {k: msk[k].shape for k in msk.files})
 
     # 3) the full dataset (expensive) --------------------------------------------------
-    out_dir = download_manifest(CONFIG["manifest_path"], CONFIG["out_dir"])
+    out_dir = download_annotations_from_dataset_manifest(
+        CONFIG["manifest_path"], CONFIG["out_dir"]
+    )

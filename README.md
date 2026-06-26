@@ -8,7 +8,7 @@ GitHub across projects.
 
 1. **Web map import** — cut local GeoTIFF tiles from an S3 web map (any band layout). ✅
 2. **Manifest import** — download tiles listed in a manifest (image + mask `.npz`). ✅
-3. **Model fetch** — download a model from its config file. 🚧
+3. **Model fetch** — download trained weights, or build a fresh model, from a config. ✅
 4. **Mask rollup** — remap annotation-mask categories. 🚧
 
 ---
@@ -36,6 +36,7 @@ uv lock --upgrade-package tytonai_utils && uv sync
 |---|---|---|
 | `webmap` | geopandas, rasterio, matplotlib, rio_tiler, bbox_to_tile_grid | Feature 1 |
 | `s3` | boto3 | Features 2–4 (S3 API) |
+| `model` | torch, segmentation-models-pytorch, timm | Feature 3 (build/load model) |
 | `all` | everything above | — |
 
 ---
@@ -65,22 +66,39 @@ opens the raster via `/vsis3` and does ranged GETs, reading only each tile's win
 ### Quick start
 
 ```python
-from pathlib import Path
 from dotenv import load_dotenv
-from tytonai_utils.webmap import build_grid, download_grid
+from tytonai_utils.webmap import download_webmap_from_shp
 
 load_dotenv()
 
-grid, study_area = build_grid("study_area.fgb", res=0.1, patch=512)
-written = download_grid(
-    grid,
+# one call: vector area + S3 link -> tiles
+written = download_webmap_from_shp(
+    "study_area.fgb",
     "s3://bucket/id/RED_GREEN_BLUE_NIR_ALPHA_webmap.tif",
     "tiles_out",
+    res=0.1, patch=512,
     bands=[1, 2, 3],   # RGB; omit for all bands except alpha
 )
 ```
 
 ### Functions
+
+#### `download_webmap_from_shp(shp_path, webmap, out_dir, res, patch, bands=None, workers=8, skip_empty=True) -> list[str]`
+High-level one-call entry: build the tile grid from a vector file, then download each
+tile from the web map. Use this unless you need to inspect/modify the grid first.
+
+| Param | Type | Description |
+|---|---|---|
+| `shp_path` | `str \| Path` | Vector area (`.shp` / `.fgb` / `.geojson` — anything geopandas reads) |
+| `webmap` | `str` | Web map link (`s3://`, `https://`, `/vsis3/…`) — auto-normalized |
+| `out_dir` | `str \| Path` | Output folder |
+| `res`, `patch` | `float`, `int` | Resolution (m/px) and tile size (px) |
+| `bands` | `list[int] \| None` | Bands to write (see `download_grid`) |
+| `workers`, `skip_empty` | `int`, `bool` | Passed through to `download_grid` |
+
+Returns the list of written tile filenames. Internally calls `build_grid` +
+`download_grid` — use those directly for finer control (e.g. plotting the grid, slicing
+to a subset before downloading).
 
 #### `to_gdal_path(link) -> str`
 Normalize a web map link into a GDAL-openable path for ranged reads. Accepts and
@@ -164,10 +182,10 @@ Read a `dataset.json` manifest (a list of tile dicts) and download every imagery
 
 ```python
 from dotenv import load_dotenv
-from tytonai_utils.manifest import download_manifest
+from tytonai_utils.manifest import download_annotations_from_dataset_manifest
 
 load_dotenv()
-download_manifest("monrovia/dataset.json", out_dir="monrovia/annotations")
+download_annotations_from_dataset_manifest("monrovia/dataset.json", out_dir="monrovia/annotations")
 ```
 
 ### Functions
@@ -192,7 +210,7 @@ the file was already cached on disk.
 | `bucket` | `str` | Source bucket |
 | `force` | `bool` | Re-download even if `dest` exists |
 
-#### `download_manifest(manifest_path, out_dir, bucket=None, force=False, workers=8, s3=None) -> Path`
+#### `download_annotations_from_dataset_manifest(manifest_path, out_dir, bucket=None, force=False, workers=8, s3=None) -> Path`
 Download every imagery + mask NPZ referenced by the manifest into `out_dir`, in parallel.
 
 | Param | Type | Description |
@@ -206,6 +224,80 @@ Download every imagery + mask NPZ referenced by the manifest into `out_dir`, in 
 
 Returns `out_dir`. Prints a summary (downloaded vs cached). Requires `load_dotenv()`
 beforehand for the `AWS_*` creds + endpoint.
+
+---
+
+## Feature 3 — Model from config (`tytonai_utils.model`)
+
+A model config (JSON) describes a `segmentation_models_pytorch` (smp) model — `model_type`,
+`encoder_type`, `encoder_weights`, `bands` (→ in_channels), `class_list` (→ #classes), and
+`epoch_file_key` (the `s3://…/...pth` trained weights). This feature downloads the weights
+and/or instantiates the model — fresh, loaded, or reshaped for transfer learning.
+
+Heavy deps are lazy-imported: the download function needs only the `s3` extra; the build/load
+functions need the `model` extra (`torch` + `segmentation-models-pytorch`).
+
+### Quick start
+
+```python
+from dotenv import load_dotenv
+from tytonai_utils.model import (
+    build_model_from_config,
+    download_and_load_model_from_config,
+    load_model_from_config,
+)
+
+load_dotenv()
+
+# fresh model: ImageNet encoder + random head
+fresh = build_model_from_config("model_config.json")
+
+# download trained weights + load them (one call)
+model = download_and_load_model_from_config("model_config.json", "models/")
+
+# transfer learning: keep trained encoder/decoder, new 3-class head, frozen encoder
+tl = load_model_from_config("model_config.json", "models/weights.pth",
+                            num_classes=3, freeze_encoder=True)
+```
+
+### Functions
+
+#### `read_model_config(config_path) -> dict`
+Load a model config JSON.
+
+#### `download_model_weights_from_config(config_path, out_dir, force=False, s3=None) -> Path`
+Download the trained `.pth` referenced by the config into `out_dir`. The S3 link **and its
+bucket** come from the config's `epoch_file_key` (not `$S3_FILE_BUCKET`). Cache-aware.
+Returns the local weights path. (`s3` extra.)
+
+#### `build_model_from_config(config_path, pretrained_encoder=True, num_classes=None) -> nn.Module`
+Build the smp architecture from the config. Default = ImageNet-pretrained encoder + randomly
+initialised decoder/head. `pretrained_encoder=False` → fully random. `num_classes` overrides
+the head size (else `len(class_list)`). (`model` extra.)
+
+| Param | Type | Description |
+|---|---|---|
+| `config_path` | `str \| Path` | Model config JSON |
+| `pretrained_encoder` | `bool` | Load ImageNet encoder weights (head always random) |
+| `num_classes` | `int \| None` | Override the head class count |
+
+#### `load_model_from_config(config_path, weights_path, num_classes=None, freeze_encoder=False, strict=False, map_location="cpu") -> nn.Module`
+Build the config's architecture and load trained weights from a `.pth`. Handles wrapped
+checkpoints (`{"model": …}` from Fabric/training loops) and plain state-dicts.
+
+| Param | Type | Description |
+|---|---|---|
+| `config_path` | `str \| Path` | Model config JSON |
+| `weights_path` | `str \| Path` | Local `.pth` checkpoint (from the download fn) |
+| `num_classes` | `int \| None` | New head size for transfer learning; with `strict=False` the encoder/decoder load and the mismatched head stays random |
+| `freeze_encoder` | `bool` | Set `requires_grad=False` on the encoder |
+| `strict` | `bool` | `load_state_dict` strictness (keep `False` when changing classes) |
+| `map_location` | `str` | Device for `torch.load` (e.g. `"cpu"`, `"cuda"`) |
+
+Returns the model; prints missing/unexpected key counts. (`model` extra.)
+
+#### `download_and_load_model_from_config(config_path, weights_dir, num_classes=None, freeze_encoder=False, strict=False, force=False) -> nn.Module`
+One call: `download_model_weights_from_config` then `load_model_from_config`. (Both extras.)
 
 ---
 

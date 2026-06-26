@@ -152,6 +152,26 @@ def download_grid(
     return [r for r in results if r]
 
 
+def download_webmap_from_shp(
+    shp_path: str | Path,
+    webmap: str,
+    out_dir: str | Path,
+    res: float,
+    patch: int,
+    bands: list[int] | None = None,
+    workers: int = 8,
+    skip_empty: bool = True,
+) -> list[str]:
+    """Download a web map (S3 link) as tiles over the area in a vector file, in one call.
+
+    Builds the tile grid from `shp_path` (.shp / .fgb / .geojson — anything geopandas
+    reads) at `res` m/px and `patch` px, then downloads each tile from `webmap`
+    (s3:// / https:// / /vsis3/) into `out_dir`. Returns the written tile filenames.
+    """
+    grid, _ = build_grid(shp_path, res, patch)
+    return download_grid(grid, webmap, out_dir, bands=bands, workers=workers, skip_empty=skip_empty)
+
+
 def plot_grid(
     grid: gpd.GeoDataFrame, study_area: gpd.GeoDataFrame, name: str,
     out_png: str | Path, patch: int, res: float,
