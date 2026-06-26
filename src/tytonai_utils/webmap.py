@@ -151,7 +151,16 @@ def download_grid(
         results = list(
             tqdm(ex.map(worker, grid.geometry.items()), total=len(grid), desc=out_dir.name)
         )
-    return [r for r in results if r]
+    written = [r for r in results if r]
+    if not written and skip_empty:  # every cell empty -> grid likely doesn't overlap the web map
+        with rasterio.open(path) as src:
+            print(
+                f"[webmap] 0 tiles written — every cell was empty. The grid likely does not "
+                f"overlap the web map (check CRS/extent):\n"
+                f"  grid   bounds={tuple(round(v, 1) for v in grid.total_bounds)} CRS={grid.crs}\n"
+                f"  webmap bounds={tuple(round(v, 1) for v in src.bounds)} CRS={src.crs}"
+            )
+    return written
 
 
 def download_webmap_from_shp(

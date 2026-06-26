@@ -180,6 +180,12 @@ def realign_annotations_to_grid(
                 ) as dst:
                     dst.write(data, 1)
                 written.append(out.name)
+    if not written:  # grid likely doesn't overlap the annotation mosaic (check CRS/extent)
+        gb = tuple(round(v, 1) for v in grid.total_bounds)
+        mb = tuple(round(v, 1) for v in (transform.c, transform.f - mosaic.shape[1] * abs(transform.e),
+                                         transform.c + mosaic.shape[2] * transform.a, transform.f))
+        print(f"[align] 0 tiles — grid may not overlap the annotations. "
+              f"grid bounds={gb} CRS={getattr(grid, 'crs', None)}; mosaic bounds={mb} CRS={crs}")
     print(f"[align] wrote {len(written)} grid-aligned mask tiles -> {out_dir}")
     return written
 
