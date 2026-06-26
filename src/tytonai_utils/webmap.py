@@ -126,6 +126,13 @@ def download_grid(
             src = local.src = rasterio.open(path)
             local.alpha_idx = _alpha_index(src)
             local.indexes = _data_bands(src, bands, local.alpha_idx)
+            out_of_range = [b for b in local.indexes if not 1 <= b <= src.count]
+            if out_of_range:
+                raise ValueError(
+                    f"webmap has {src.count} band(s) (colorinterp="
+                    f"{[ci.name for ci in src.colorinterp]}); requested bands "
+                    f"{local.indexes} include out-of-range {out_of_range}"
+                )
         win = _tile_window(src, geom)
         data = src.read(local.indexes, window=win, boundless=True, fill_value=0)
         if skip_empty:
