@@ -152,6 +152,10 @@ aligned = realign_annotations_to_grid(ann_grid, CONFIG["annotations"], CONFIG["m
                                       "downloads/annotations_aligned")
 print(f"wrote {len(aligned)} grid-aligned mask tiles -> downloads/annotations_aligned")
 
+# overlapping annotation sets that contradict -> resolve per-pixel by majority vote ---------
+aligned_voted = realign_annotations_to_grid(ann_grid, CONFIG["annotations"], CONFIG["manifest"],
+                                            "downloads/annotations_aligned_vote", overlapping="vote")
+
 # QA the aligned pair by FILENAME: imagery .tif (download_grid) + mask .tif (realign) -----
 from tytonai_utils.viz import plot_image_mask_tiles
 
