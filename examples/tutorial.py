@@ -100,7 +100,11 @@ plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], n=6,
 # 3b) specific tiles by index (saves pairs_idx.png) -------------------------------
 plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0, 1, 2],
                       class_names=CLASS_NAMES, out_png="pairs_idx.png")
-print("saved pairs.png / pairs_idx.png — open them to inspect")
+
+# 3c) RGB + DSM + mask per sample (saves pairs_dsm.png) ---------------------------
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], n=3, show_dsm=True,
+                      class_names=CLASS_NAMES, out_png="pairs_dsm.png")
+print("saved pairs.png / pairs_idx.png / pairs_dsm.png — open them to inspect")
 
 
 # ════════════════════════════════════════════════════════════════════════════

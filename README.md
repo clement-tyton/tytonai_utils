@@ -408,11 +408,12 @@ Handles RGB (3+ bands) and single-band greyscale. Save with `out_png`. (See Feat
 #### `webmap.plot_grid(grid, study_area, name, out_png, patch, res) -> None`
 Draw the tile grid over the study-area outline — no download needed. (See Feature 1.)
 
-#### `viz.plot_image_mask_pairs(annotations_dir, manifest, indexes=None, n=6, out_png=None, image_key=None, mask_key=None, bands=(0,1,2), class_names=None, cmap="tab20", max_rows=3, seed=0) -> Figure`
+#### `viz.plot_image_mask_pairs(annotations_dir, manifest, indexes=None, n=6, out_png=None, image_key=None, mask_key=None, bands=(0,1,2), rgb_keys=("RED","GREEN","BLUE"), show_dsm=False, dsm_cmap="terrain", class_names=None, cmap="tab20", max_rows=3, seed=0) -> Figure`
 Plot imagery tiles next to their annotation masks (the `.npz` pairs from Feature 2) for
-visual QA, with a class legend. Select specific `indexes`, else `n` random tiles (seeded).
-Layout is capped at `max_rows` rows and grows columns. The image array is auto-detected as
-the **3/4-channel** array (so RGB renders as RGB); masks get consistent colours across panels.
+visual QA, with a class legend. The imagery npz stores bands as **separate keys**, so RGB is
+composed from `rgb_keys` (`RED`/`GREEN`/`BLUE`); set `show_dsm=True` to add a DSM panel per
+sample. Select specific `indexes`, else `n` random tiles (seeded). Layout is capped at
+`max_rows` rows and grows columns. Mask classes get consistent colours across panels.
 
 | Param | Type | Description |
 |---|---|---|
@@ -422,7 +423,10 @@ the **3/4-channel** array (so RGB renders as RGB); masks get consistent colours 
 | `n` | `int` | Number of random tiles when `indexes` is `None` |
 | `out_png` | `str \| Path \| None` | Save the figure if given |
 | `image_key` / `mask_key` | `str \| None` | NPZ array keys; auto-detected if `None` |
-| `bands` | `tuple[int,...]` | Which image channels to render as RGB |
+| `bands` | `tuple[int,...]` | Channel indices to render as RGB (when imagery is a single 3D array) |
+| `rgb_keys` | `tuple[str,str,str]` | NPZ keys to stack into RGB (default `RED/GREEN/BLUE`) |
+| `show_dsm` | `bool` | Add a DSM panel (from the `DSM` key) per sample |
+| `dsm_cmap` | `str` | Colormap for the DSM panel |
 | `class_names` | `dict[int,str] \| None` | Label the legend by name (e.g. `RND_NAMES_7CLASS`); else by id |
 | `cmap` | `str` | Colormap for the mask classes (categorical) |
 | `max_rows` | `int` | Max rows; samples wrap into more columns |
