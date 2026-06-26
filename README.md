@@ -7,7 +7,7 @@ GitHub across projects.
 ## Features
 
 1. **Web map import** — cut local GeoTIFF tiles from an S3 web map (any band layout). ✅
-2. **Manifest import** — download tiles listed in a manifest (image + mask `.npz`). 🚧
+2. **Manifest import** — download tiles listed in a manifest (image + mask `.npz`). ✅
 3. **Model fetch** — download a model from its config file. 🚧
 4. **Mask rollup** — remap annotation-mask categories. 🚧
 
@@ -151,6 +151,61 @@ geo-extent. Handles RGB (3+ bands) and single-band (grayscale) tiles.
 | `out_png` | `str \| Path \| None` | Save the figure if given |
 
 Returns the matplotlib `Axes`. Raises `FileNotFoundError` if no tiles are present.
+
+---
+
+## Feature 2 — Manifest / annotation download (`tytonai_utils.manifest`)
+
+Read a `dataset.json` manifest (a list of tile dicts) and download every imagery + mask
+`.npz` it references from S3 into a chosen `out_dir`. Uses boto3 (the `s3` extra) — no
+`aws` CLI needed. Cache-aware: files already on disk are skipped unless `force=True`.
+
+### Quick start
+
+```python
+from dotenv import load_dotenv
+from tytonai_utils.manifest import download_manifest
+
+load_dotenv()
+download_manifest("monrovia/dataset.json", out_dir="monrovia/annotations")
+```
+
+### Functions
+
+#### `read_manifest(manifest_path) -> list[dict]`
+Load the `dataset.json` tile list (JSON array of tile dicts with `imagery_file`,
+`mask_file`, `geotransform`, `srid`, `class_counts`, …).
+
+| Param | Type | Description |
+|---|---|---|
+| `manifest_path` | `str \| Path` | Path to the `dataset.json` file |
+
+#### `download_file(s3, key, dest, bucket, force=False) -> bool`
+Download `s3://bucket/key` to `dest`. Returns `True` if a download happened, `False` if
+the file was already cached on disk.
+
+| Param | Type | Description |
+|---|---|---|
+| `s3` | boto3 client | From `make_s3_client()` |
+| `key` | `str` | S3 object key (the manifest's `imagery_file` / `mask_file`) |
+| `dest` | `Path` | Local destination (parent dirs created) |
+| `bucket` | `str` | Source bucket |
+| `force` | `bool` | Re-download even if `dest` exists |
+
+#### `download_manifest(manifest_path, out_dir, bucket=None, force=False, workers=8, s3=None) -> Path`
+Download every imagery + mask NPZ referenced by the manifest into `out_dir`, in parallel.
+
+| Param | Type | Description |
+|---|---|---|
+| `manifest_path` | `str \| Path` | Path to `dataset.json` |
+| `out_dir` | `str \| Path` | Output folder (created if missing) |
+| `bucket` | `str \| None` | Source bucket; defaults to `$S3_FILE_BUCKET` |
+| `force` | `bool` | Re-download cached files |
+| `workers` | `int` | Parallel download threads (default 8) |
+| `s3` | boto3 client \| None | Reuse a client; defaults to a fresh `make_s3_client()` |
+
+Returns `out_dir`. Prints a summary (downloaded vs cached). Requires `load_dotenv()`
+beforehand for the `AWS_*` creds + endpoint.
 
 ---
 
