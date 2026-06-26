@@ -90,13 +90,16 @@ download_annotations_from_dataset_manifest(CONFIG["manifest"], CONFIG["annotatio
 #  VISUALIZATION — image/mask QA   (needs: CONFIG["manifest"] + Feature 2 output)
 #  Extra: [viz]
 # ════════════════════════════════════════════════════════════════════════════
+from tytonai_utils.rollup import CLASS_NAMES
 from tytonai_utils.viz import plot_image_mask_pairs
 
-# 3a) 4 random image|mask pairs (auto-detects npz keys; saves pairs.png) -----------
-plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], n=4, out_png="pairs.png")
+# 3a) 6 random image|mask pairs, legend by source class name (saves pairs.png) -----
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], n=6,
+                      class_names=CLASS_NAMES, out_png="pairs.png")
 
 # 3b) specific tiles by index (saves pairs_idx.png) -------------------------------
-plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0, 1, 2], out_png="pairs_idx.png")
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0, 1, 2],
+                      class_names=CLASS_NAMES, out_png="pairs_idx.png")
 print("saved pairs.png / pairs_idx.png — open them to inspect")
 
 
@@ -124,8 +127,10 @@ print("6-class:", rollup_mask(fake, RND_REMAP_6CLASS).tolist())  # cenchrus/humm
 rollup_annotations(CONFIG["annotations"], CONFIG["manifest"], RND_REMAP_7CLASS, CONFIG["annotations_rnd7"])
 
 # 4d) verify: compare class ids before vs after on the same tile -------------------
-plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0], out_png="mask_before.png")
-plot_image_mask_pairs(CONFIG["annotations_rnd7"], CONFIG["manifest"], indexes=[0], out_png="mask_after.png")
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0],
+                      class_names=CLASS_NAMES, out_png="mask_before.png")          # source names
+plot_image_mask_pairs(CONFIG["annotations_rnd7"], CONFIG["manifest"], indexes=[0],
+                      class_names=RND_NAMES_7CLASS, out_png="mask_after.png")      # rolled-up names
 print("compare mask_before.png vs mask_after.png")
 
 

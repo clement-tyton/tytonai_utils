@@ -408,10 +408,11 @@ Handles RGB (3+ bands) and single-band greyscale. Save with `out_png`. (See Feat
 #### `webmap.plot_grid(grid, study_area, name, out_png, patch, res) -> None`
 Draw the tile grid over the study-area outline — no download needed. (See Feature 1.)
 
-#### `viz.plot_image_mask_pairs(annotations_dir, manifest, indexes=None, n=6, out_png=None, image_key=None, mask_key=None, bands=(0,1,2), cmap="tab20", seed=0) -> Figure`
+#### `viz.plot_image_mask_pairs(annotations_dir, manifest, indexes=None, n=6, out_png=None, image_key=None, mask_key=None, bands=(0,1,2), class_names=None, cmap="tab20", max_rows=3, seed=0) -> Figure`
 Plot imagery tiles next to their annotation masks (the `.npz` pairs from Feature 2) for
-visual QA. Select specific `indexes`, else `n` random tiles (seeded). Array keys are
-auto-detected (largest array per file) unless `image_key`/`mask_key` are given.
+visual QA, with a class legend. Select specific `indexes`, else `n` random tiles (seeded).
+Layout is capped at `max_rows` rows and grows columns. The image array is auto-detected as
+the **3/4-channel** array (so RGB renders as RGB); masks get consistent colours across panels.
 
 | Param | Type | Description |
 |---|---|---|
@@ -422,7 +423,9 @@ auto-detected (largest array per file) unless `image_key`/`mask_key` are given.
 | `out_png` | `str \| Path \| None` | Save the figure if given |
 | `image_key` / `mask_key` | `str \| None` | NPZ array keys; auto-detected if `None` |
 | `bands` | `tuple[int,...]` | Which image channels to render as RGB |
-| `cmap` | `str` | Colormap for the mask (categorical) |
+| `class_names` | `dict[int,str] \| None` | Label the legend by name (e.g. `RND_NAMES_7CLASS`); else by id |
+| `cmap` | `str` | Colormap for the mask classes (categorical) |
+| `max_rows` | `int` | Max rows; samples wrap into more columns |
 | `seed` | `int` | RNG seed for reproducible random selection |
 
 Returns the matplotlib `Figure`.
