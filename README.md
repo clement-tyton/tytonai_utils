@@ -410,12 +410,21 @@ Uses rasterio (the `webmap` extra) + numpy. Match the grid `res` to the annotati
 ### Quick start
 
 ```python
-from tytonai_utils.webmap import build_grid
+from tytonai_utils.webmap import build_grid, download_grid
 from tytonai_utils.align import realign_annotations_to_grid
 
-grid, _ = build_grid("study_area.fgb", res=0.0206348504972787, patch=512)  # res = annotation res
-realign_annotations_to_grid(grid, "annotations/", "dataset.json", out_dir="annotations_aligned/")
+# ONE grid drives BOTH imagery and masks so the .tif tiles pair by filename.
+grid, _ = build_grid("study_area.fgb", res=0.0206348504972787, patch=512)   # res = annotation res
+download_grid(grid, webmap, "tiles_aligned/", bands=[1, 2, 3])              # imagery on the grid
+realign_annotations_to_grid(grid, "annotations/", "dataset.json", "masks_aligned/")  # masks on SAME grid
+# tiles_aligned/tile_NNNNN.tif  <->  masks_aligned/tile_NNNNN.tif
 ```
+
+> **Pairing rule.** Imagery (`download_grid`) and masks (`realign_annotations_to_grid`) must be
+> built from the **same grid object** (same `fgb`/`res`/`patch`) — both name tiles `tile_NNNNN.tif`
+> by grid-cell index, so a *different* grid (e.g. a different `res`) yields non-matching filenames
+> and `plot_image_mask_tiles` finds no pairs. Both steps skip empty cells; the intersection is the
+> set of cells that have both imagery and annotation.
 
 ### Functions
 
