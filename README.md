@@ -104,7 +104,7 @@ tile from the web map. Use this unless you need to inspect/modify the grid first
 | `shp_path` | `str \| Path` | Vector area (`.shp` / `.fgb` / `.geojson` — anything geopandas reads) |
 | `webmap` | `str` | Web map link (`s3://`, `https://`, `/vsis3/…`) — auto-normalized |
 | `out_dir` | `str \| Path` | Output folder |
-| `res`, `patch` | `float`, `int` | Resolution (m/px) and tile size (px) |
+| `res`, `patch` | `float`, `int` | The web map's native resolution (m/px — from the tytonai app, beside the S3 link) and tile size (px) |
 | `bands` | `list[int] \| None` | Bands to write (see `download_grid`) |
 | `workers`, `skip_empty` | `int`, `bool` | Passed through to `download_grid` |
 
@@ -135,7 +135,7 @@ tile grid in pixel space anchored at the bbox top-left.
 | Param | Type | Description |
 |---|---|---|
 | `fgb_path` | `str \| Path` | FlatGeobuf file defining the region to tile |
-| `res` | `float` | Raster resolution, metres per pixel |
+| `res` | `float` | The **web map's native resolution** (metres/pixel) — read it in the tytonai app, in the same place you copy the S3 link |
 | `patch` | `int` | Tile size in pixels (square) |
 
 Returns `(grid, study_area)` — both `GeoDataFrame`s. `grid` has one row per tile;

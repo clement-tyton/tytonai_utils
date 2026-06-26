@@ -49,6 +49,8 @@ from tytonai_utils.webmap import (
 )
 
 # 1a) build the grid from the vector area (cheap, local — no S3) --------------------
+#     res = the web map's native resolution (m/px) — read it in the tytonai app, in the
+#     same place you copy the S3 link. patch = tile size in pixels.
 grid, study_area = build_grid(CONFIG["fgb"], res=0.1, patch=512)
 print(f"{len(grid)} tiles, CRS={study_area.crs}")
 

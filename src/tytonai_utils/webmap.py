@@ -43,7 +43,8 @@ def to_gdal_path(link: str) -> str:
 def build_grid(fgb_path: str | Path, res: float, patch: int) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """One .fgb -> its bbox -> a uniform patch-pixel grid. Returns (grid, study_area).
 
-    `res` is metres/pixel, `patch` the tile size in pixels.
+    `res` is the web map's native resolution in metres/pixel (read it in the tytonai app,
+    in the same place you copy the S3 link); `patch` is the tile size in pixels.
     """
     study_area = gpd.read_file(fgb_path)
     minx, miny, maxx, maxy = study_area.total_bounds
@@ -167,6 +168,7 @@ def download_webmap_from_shp(
     Builds the tile grid from `shp_path` (.shp / .fgb / .geojson — anything geopandas
     reads) at `res` m/px and `patch` px, then downloads each tile from `webmap`
     (s3:// / https:// / /vsis3/) into `out_dir`. Returns the written tile filenames.
+    `res` is the web map's native resolution (from the tytonai app, beside the S3 link).
     """
     grid, _ = build_grid(shp_path, res, patch)
     return download_grid(grid, webmap, out_dir, bands=bands, workers=workers, skip_empty=skip_empty)
