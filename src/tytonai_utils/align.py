@@ -157,6 +157,15 @@ def realign_annotations_to_grid(
     if getattr(grid, "crs", None) is not None and grid.crs != crs:
         grid = grid.to_crs(crs)
 
+    # Only grid cells overlapping the annotation mosaic extent can hold data — cut just those,
+    # not the whole (possibly huge) grid.
+    from shapely.geometry import box
+
+    left, top = transform.c, transform.f
+    right, bottom = left + mosaic.shape[2] * transform.a, top - mosaic.shape[1] * abs(transform.e)
+    grid_bounds = tuple(round(v, 1) for v in grid.total_bounds)
+    cells = grid[grid.intersects(box(left, bottom, right, top))]
+
     profile = dict(
         driver="GTiff", height=mosaic.shape[1], width=mosaic.shape[2], count=1,
         dtype=mosaic.dtype, crs=crs, transform=transform, nodata=nodata,
@@ -167,7 +176,7 @@ def realign_annotations_to_grid(
             tmp.write(mosaic)
         with mm.open() as mosaic_ds:
             # name tiles by grid index (stable cell id) so it pairs with download_grid output
-            for idx, geom in tqdm(grid.geometry.items(), total=len(grid), desc="cutting tiles"):
+            for idx, geom in tqdm(cells.geometry.items(), total=len(cells), desc="cutting tiles"):
                 win = from_bounds(*geom.bounds, transform=mosaic_ds.transform).round_offsets().round_lengths()
                 data = mosaic_ds.read(1, window=win, boundless=True, fill_value=nodata)
                 if skip_empty and not (data != nodata).any():
@@ -181,11 +190,9 @@ def realign_annotations_to_grid(
                     dst.write(data, 1)
                 written.append(out.name)
     if not written:  # grid likely doesn't overlap the annotation mosaic (check CRS/extent)
-        gb = tuple(round(v, 1) for v in grid.total_bounds)
-        mb = tuple(round(v, 1) for v in (transform.c, transform.f - mosaic.shape[1] * abs(transform.e),
-                                         transform.c + mosaic.shape[2] * transform.a, transform.f))
-        print(f"[align] 0 tiles — grid may not overlap the annotations. "
-              f"grid bounds={gb} CRS={getattr(grid, 'crs', None)}; mosaic bounds={mb} CRS={crs}")
+        mb = (round(left, 1), round(bottom, 1), round(right, 1), round(top, 1))
+        print(f"[align] 0 tiles — grid may not overlap the annotations. grid bounds={grid_bounds} "
+              f"CRS={getattr(grid, 'crs', None)}; mosaic bounds={mb} CRS={crs}")
     print(f"[align] wrote {len(written)} grid-aligned mask tiles -> {out_dir}")
     return written
 
