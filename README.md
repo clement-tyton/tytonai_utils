@@ -449,6 +449,15 @@ s3.list_objects_v2(Bucket="...", MaxKeys=5)
 
 ---
 
+## Troubleshooting
+
+**`RuntimeError: main thread is not in main loop` / `Tcl_AsyncDelete … core dumped` during
+`download_grid`.** matplotlib's interactive **Tk** backend is not thread-safe and clashes
+with the threaded downloads. **Handled automatically:** importing `tytonai_utils` selects the
+non-interactive **Agg** backend, so plots save to PNG and downloads never crash — nothing to
+configure. Just `import tytonai_utils` (or any `from tytonai_utils...`) before importing
+`matplotlib.pyplot` yourself. To override, set `MPLBACKEND` before launching Python.
+
 ## Development
 
 ```bash

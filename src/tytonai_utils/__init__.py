@@ -7,4 +7,18 @@ Features (built incrementally):
 4. Mask rollup      — remap annotation mask categories.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
+
+# Force a non-interactive (Agg) matplotlib backend on import. The threaded downloads
+# (e.g. download_grid) clash with GUI backends like Tk and can HARD-CRASH the interpreter
+# (Tcl_AsyncDelete ... core dumped). Agg just renders to PNG. Honour an explicit user
+# choice via the MPLBACKEND env var; do nothing if matplotlib isn't installed.
+import os as _os
+
+if "MPLBACKEND" not in _os.environ:
+    try:
+        import matplotlib as _matplotlib
+
+        _matplotlib.use("Agg")
+    except ImportError:
+        pass

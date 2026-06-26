@@ -30,6 +30,7 @@ CLASS_NAMES: dict[int, str] = {
     10120: "Aerva javanica", 10121: "Annual herbs and grasses",
     10122: "Phoenix dactylifera", 10123: "Eucalyptus camaldulensis",
     10124: "Eucalyptus victrix", 10125: "Mulga", 1: "Not Erosion", 14: "Erosion",
+    10126: "Calotropis procera",
 }
 
 
@@ -46,7 +47,7 @@ def target_id_to_name(groups: dict[str, list[int]], target_ids: dict[str, int]) 
 # ── 7-class grouping + R&D number scheme ─────────────────────────────────────────────
 ROLLUP_GROUPS_7CLASS: dict[str, list[int]] = {
     "Ground":  [2, 200, 9, 201],                                  # Ground, Abiotic, Generic debris, Water
-    "Shrub":   [4, 10111, 10120, 10125],                          # Shrub, Chile_Shrub1, Aerva javanica, Mulga
+    "Shrub":   [4, 10111, 10120, 10125, 10126],                   # Shrub, Chile_Shrub1, Aerva javanica, Mulga, Calotropis procera
     "Tree":    [5, 10108, 10109, 10110, 10115, 10117, 10122, 10123, 10124],
     "Herb":    [6, 10121],                                        # Herb, Annual herbs and grasses
     "Sedge":   [40],

@@ -28,6 +28,9 @@ from dotenv import load_dotenv
 # .env must be in the working dir (or pass the path). Exports AWS_* for S3 + GDAL /vsis3.
 load_dotenv()
 
+# Note: importing tytonai_utils (below) auto-selects matplotlib's non-interactive Agg
+# backend, so plots save to PNG and the threaded downloads never crash. Nothing to set up.
+
 CONFIG = {
     "fgb": Path("study_area.fgb"),
     "webmap": "s3://c1cc6b74-6aa7-11f1-b078-5f348e776dae/7a89561f-ae92-4ed7-8c75-06e8ebf89702/RED_GREEN_BLUE_NIR_ALPHA_webmap.tif",
@@ -87,17 +90,14 @@ download_annotations_from_dataset_manifest(CONFIG["manifest"], CONFIG["annotatio
 #  VISUALIZATION — image/mask QA   (needs: CONFIG["manifest"] + Feature 2 output)
 #  Extra: [viz]
 # ════════════════════════════════════════════════════════════════════════════
-import matplotlib.pyplot as plt
-
 from tytonai_utils.viz import plot_image_mask_pairs
 
 # 3a) 4 random image|mask pairs (auto-detects npz keys; saves pairs.png) -----------
 plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], n=4, out_png="pairs.png")
-plt.show()
 
-# 3b) specific tiles by index ------------------------------------------------------
-plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0, 1, 2])
-plt.show()
+# 3b) specific tiles by index (saves pairs_idx.png) -------------------------------
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0, 1, 2], out_png="pairs_idx.png")
+print("saved pairs.png / pairs_idx.png — open them to inspect")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -124,9 +124,9 @@ print("6-class:", rollup_mask(fake, RND_REMAP_6CLASS).tolist())  # cenchrus/humm
 rollup_annotations(CONFIG["annotations"], CONFIG["manifest"], RND_REMAP_7CLASS, CONFIG["annotations_rnd7"])
 
 # 4d) verify: compare class ids before vs after on the same tile -------------------
-plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0])          # original ids
-plot_image_mask_pairs(CONFIG["annotations_rnd7"], CONFIG["manifest"], indexes=[0])     # rolled-up ids
-plt.show()
+plot_image_mask_pairs(CONFIG["annotations"], CONFIG["manifest"], indexes=[0], out_png="mask_before.png")
+plot_image_mask_pairs(CONFIG["annotations_rnd7"], CONFIG["manifest"], indexes=[0], out_png="mask_after.png")
+print("compare mask_before.png vs mask_after.png")
 
 
 # ════════════════════════════════════════════════════════════════════════════

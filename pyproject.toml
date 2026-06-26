@@ -1,6 +1,6 @@
 [project]
 name = "tytonai_utils"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reusable helpers for interacting with the tytonai platform (S3 downloads, web map tiles, model fetch, mask rollup)."
 requires-python = ">=3.14"
 
