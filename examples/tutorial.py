@@ -58,7 +58,7 @@ grid, study_area = build_grid(CONFIG["fgb"], res=0.1, patch=512)
 print(f"{len(grid)} tiles, CRS={study_area.crs}")
 
 # 1b) sanity-plot the grid over the area (saves grid.png) --------------------------
-plot_grid(grid, study_area, "study_area", "grid.png", patch=512, res=0.1)
+plot_grid(grid, study_area, "study_area", "grid.png")
 
 # 1c) download a 10-tile slice (confirms S3 auth + s3://->/vsis3 + ranged reads) ----
 #     bands: [1,2,3]=RGB webmap, [1]=single-band webmap (e.g. DSM), None=all bands.

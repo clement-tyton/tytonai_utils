@@ -160,16 +160,16 @@ subset via `grid.iloc[...]` keeps matching names. Empty tiles are omitted. Outpu
 source `dtype`, `nodata`, CRS, and per-band colour interpretation — so masks stay clean integer
 rasters.
 
-#### `plot_grid(grid, study_area, name, out_png, patch, res) -> None`
+#### `plot_grid(grid, study_area, name, out_png) -> None`
 Save a PNG of the tile grid (blue) over the study-area outline (red) — a quick sanity
-check of coverage and tile count before downloading.
+check of coverage and tile count before downloading. The cell size in the title is read
+from the grid geometry.
 
 | Param | Type | Description |
 |---|---|---|
 | `grid`, `study_area` | `GeoDataFrame` | Outputs of `build_grid` |
 | `name` | `str` | Title label |
 | `out_png` | `str \| Path` | Output PNG path |
-| `patch`, `res` | `int`, `float` | For the title annotation (px and metres) |
 
 #### `preview_tiles(tiles_dir, downscale=16, ax=None, out_png=None) -> Axes`
 Coarse mosaic of downloaded tiles: each `.tif` read downsampled and placed at its real
@@ -476,8 +476,9 @@ lives in `tytonai_utils.viz`. matplotlib comes from the `viz` (or `webmap`) extr
 Downscaled overview mosaic of downloaded `.tif` tiles, placed at their real geo-extent.
 Handles RGB (3+ bands) and single-band greyscale. Save with `out_png`. (See Feature 1.)
 
-#### `webmap.plot_grid(grid, study_area, name, out_png, patch, res) -> None`
-Draw the tile grid over the study-area outline — no download needed. (See Feature 1.)
+#### `webmap.plot_grid(grid, study_area, name, out_png) -> None`
+Draw the tile grid over the study-area outline — no download needed (cell size in the title
+is read from the grid). (See Feature 1.)
 
 #### `viz.plot_image_mask_pairs(annotations_dir, manifest, indexes=None, n=6, out_png=None, mask_dir=None, image_key=None, mask_key=None, bands=(0,1,2), rgb_keys=("RED","GREEN","BLUE"), show_dsm=False, dsm_cmap="terrain", class_names=None, cmap="tab20", max_rows=3, seed=0) -> Figure`
 Plot imagery tiles next to their annotation masks (the `.npz` pairs from Feature 2) for

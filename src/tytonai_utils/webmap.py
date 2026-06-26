@@ -175,22 +175,20 @@ def download_webmap_from_shp(
     return download_grid(grid, webmap, out_dir, bands=bands, workers=workers, skip_empty=skip_empty)
 
 
-def plot_grid(
-    grid: gpd.GeoDataFrame, study_area: gpd.GeoDataFrame, name: str,
-    out_png: str | Path, patch: int, res: float,
-) -> None:
+def plot_grid(grid: gpd.GeoDataFrame, study_area: gpd.GeoDataFrame, name: str, out_png: str | Path) -> None:
     """Save a PNG of the tile grid (blue) over the study-area outline (red).
 
-    Renders via the non-interactive Agg backend (matplotlib.figure.Figure), so it never
-    creates GUI/Tk objects — safe to call alongside the threaded downloads.
+    The cell size in the title is read from the grid geometry. Renders via the non-interactive
+    Agg backend (no GUI/Tk objects) — safe to call alongside the threaded downloads.
     """
     from matplotlib.figure import Figure
 
+    minx, _, maxx, _ = grid.geometry.iloc[0].bounds  # physical cell size from the first cell
     fig = Figure(figsize=(10, 6))
     ax = fig.subplots()
     grid.boundary.plot(ax=ax, color="tab:blue", linewidth=0.4)
     study_area.boundary.plot(ax=ax, color="tab:red", linewidth=1.5)
-    ax.set_title(f"{name}: {len(grid)} tiles of {patch}px ({patch * res:.1f} m)")
+    ax.set_title(f"{name}: {len(grid)} tiles (~{maxx - minx:.1f} m)")
     ax.set_aspect("equal")
     fig.tight_layout()
     fig.savefig(out_png, dpi=150)
@@ -247,7 +245,7 @@ if __name__ == "__main__":
     print(f"{len(grid)} tiles, CRS={study_area.crs}")
 
     # 2) sanity-plot the grid over the study area (cheap) -------------------------------
-    plot_grid(grid, study_area, "study_area", "grid.png", CONFIG["patch"], CONFIG["res"])
+    plot_grid(grid, study_area, "study_area", "grid.png")
 
     # 3) download a small slice first to confirm S3 auth + extent (medium) --------------
     #    bands=None -> every band except alpha; [1,2,3]=RGB-only, [1,2,3,4]=RGB+NIR, [1]=mask.
