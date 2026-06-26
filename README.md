@@ -10,6 +10,7 @@ GitHub across projects.
 2. **Manifest import** — download tiles listed in a manifest (image + mask `.npz`). ✅
 3. **Model fetch** — download trained weights, or build a fresh model, from a config. ✅
 4. **Mask rollup** — remap annotation-mask class ids to parent categories. ✅
+5. **Annotation realign** — re-tile misaligned annotation masks onto a grid. ✅
 
 ---
 
@@ -396,6 +397,56 @@ Imagery files untouched; mask array key auto-detected (largest) unless `mask_key
 
 ---
 
+## Feature 5 — Realign annotations to a grid (`tytonai_utils.align`)
+
+Annotation tiles from a manifest are georeferenced (`geotransform` + `srid`) but rarely tiled
+on the same grid as your web map. This **merges every annotation mask into one mosaic** and
+**cuts it along your grid cells** — masks aligned 1:1 with the imagery `download_grid` writes
+for the same grid (output `tile_NNNNN.tif` pairs with imagery `tile_NNNNN.tif`).
+
+Uses rasterio (the `webmap` extra) + numpy. Match the grid `res` to the annotation resolution
+(`resolution_values` in the manifest) for a clean re-tile.
+
+### Quick start
+
+```python
+from tytonai_utils.webmap import build_grid
+from tytonai_utils.align import realign_annotations_to_grid
+
+grid, _ = build_grid("study_area.fgb", res=0.0206348504972787, patch=512)  # res = annotation res
+realign_annotations_to_grid(grid, "annotations/", "dataset.json", out_dir="annotations_aligned/")
+```
+
+### Functions
+
+#### `realign_annotations_to_grid(grid, annotations_dir, manifest, out_dir, mask_key=None, nodata=0, skip_empty=True, overlapping="first") -> list[str]`
+Mosaic the annotation masks and cut them along `grid` (a GeoDataFrame from `build_grid` or any
+tiling). Writes grid-aligned GeoTIFF masks; skips cells with no annotation coverage. The grid
+is reprojected to the annotation CRS if they differ. Shows tqdm progress (load → mosaic → cut).
+
+| Param | Type | Description |
+|---|---|---|
+| `grid` | `GeoDataFrame` | Target tiling (from `build_grid`) |
+| `annotations_dir` | `str \| Path` | Folder of downloaded mask `.npz` |
+| `manifest` | `list[dict] \| str \| Path` | Tile list or path to `dataset.json` (provides `geotransform`/`srid`) |
+| `out_dir` | `str \| Path` | Output folder for aligned mask tiles |
+| `mask_key` | `str \| None` | NPZ mask key; auto-detected if `None` |
+| `nodata` | `int` | Fill for areas with no annotation (default `0`) |
+| `skip_empty` | `bool` | Skip grid cells with no coverage |
+| `overlapping` | `str` | How to resolve overlapping (contradicting) annotation sets: `"first"` (default), `"last"`, or `"vote"` (per-pixel majority) |
+
+Returns the written tile names (`tile_NNNNN.tif`), pairing with `download_grid` imagery by index.
+
+> **Overlaps & contradictions.** Where several annotation sets cover the same pixel with
+> different classes, `overlapping="vote"` takes the per-pixel majority across all overlapping
+> tiles; `"first"`/`"last"` keep the first/last tile's value.
+
+#### `realign_annotations_from_shp(shp_path, res, patch, annotations_dir, manifest, out_dir, mask_key=None, nodata=0, skip_empty=True, overlapping="first") -> list[str]`
+One call: `build_grid(shp_path, res, patch)` then `realign_annotations_to_grid`. `res` should
+match the annotation resolution. `overlapping` resolves contradicting overlaps (see above).
+
+---
+
 ## Visualization helpers
 
 Quick QA plots. The web map helpers live in `tytonai_utils.webmap`; the image/mask helper
@@ -427,8 +478,31 @@ sample. Select specific `indexes`, else `n` random tiles (seeded). Layout is cap
 | `rgb_keys` | `tuple[str,str,str]` | NPZ keys to stack into RGB (default `RED/GREEN/BLUE`) |
 | `show_dsm` | `bool` | Add a DSM panel (from the `DSM` key) per sample |
 | `dsm_cmap` | `str` | Colormap for the DSM panel |
-| `class_names` | `dict[int,str] \| None` | Label the legend by name (e.g. `RND_NAMES_7CLASS`); else by id |
+| `class_names` | `dict[int,str] \| None` | Label the legend by name; defaults to the org class names (`CLASS_NAMES`), which also cover rolled-up ids. Pass `RND_NAMES_7CLASS` etc. to override |
 | `cmap` | `str` | Colormap for the mask classes (categorical) |
+| `max_rows` | `int` | Max rows; samples wrap into more columns |
+| `seed` | `int` | RNG seed for reproducible random selection |
+
+Returns the matplotlib `Figure`. Needs the **manifest** because each tile's image and mask
+are separate npz files referenced by it. For grid-aligned `.tif` tiles paired by filename, use
+`plot_image_mask_tiles` instead.
+
+#### `viz.plot_image_mask_tiles(image_dir, mask_dir, indexes=None, n=6, out_png=None, bands=(1,2,3), class_names=None, cmap="tab20", max_rows=3, seed=0) -> Figure`
+Plot imagery `.tif` next to mask `.tif`, **paired by filename** across two folders — no
+manifest needed. Built for grid-aligned outputs: `image_dir` from `download_grid`, `mask_dir`
+from `realign_annotations_to_grid` (both write `tile_NNNNN.tif`). Pairs are the tiles present in
+**both** folders. Same layout + legend as `plot_image_mask_pairs`. Needs rasterio (`webmap` extra).
+
+| Param | Type | Description |
+|---|---|---|
+| `image_dir` | `str \| Path` | Folder of RGB imagery `.tif` (e.g. `download_grid` output) |
+| `mask_dir` | `str \| Path` | Folder of mask `.tif` (e.g. `realign_annotations_to_grid` output) |
+| `indexes` | `list[int] \| None` | Positions in the sorted paired list; `None` → `n` random |
+| `n` | `int` | Number of random pairs when `indexes` is `None` |
+| `out_png` | `str \| Path \| None` | Save the figure if given |
+| `bands` | `tuple[int,...]` | 1-based GeoTIFF bands for RGB |
+| `class_names` | `dict[int,str] \| None` | Label the legend by name; else by id |
+| `cmap` | `str` | Colormap for the mask classes |
 | `max_rows` | `int` | Max rows; samples wrap into more columns |
 | `seed` | `int` | RNG seed for reproducible random selection |
 

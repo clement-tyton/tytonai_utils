@@ -141,6 +141,26 @@ print("compare mask_before.png vs mask_after.png")
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  FEATURE 5 — Realign annotations to the grid (needs: CONFIG["fgb"] + Feature 2 output)
+#  Extra: [webmap] (rasterio). Build the grid at the ANNOTATION resolution for a clean re-tile.
+# ════════════════════════════════════════════════════════════════════════════
+from tytonai_utils.align import realign_annotations_to_grid
+
+# grid at the annotation resolution (manifest resolution_values), then mosaic + cut masks
+ann_grid, _ = build_grid(CONFIG["fgb"], res=0.0206348504972787, patch=512)
+aligned = realign_annotations_to_grid(ann_grid, CONFIG["annotations"], CONFIG["manifest"],
+                                      "downloads/annotations_aligned")
+print(f"wrote {len(aligned)} grid-aligned mask tiles -> downloads/annotations_aligned")
+
+# QA the aligned pair by FILENAME: imagery .tif (download_grid) + mask .tif (realign) -----
+from tytonai_utils.viz import plot_image_mask_tiles
+
+plot_image_mask_tiles(CONFIG["tiles_out"], "downloads/annotations_aligned", n=6,
+                      out_png="pairs_aligned.png")
+print("saved pairs_aligned.png")
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  FEATURE 3 — Model from config   (needs: .env, CONFIG["model_cfg"])
 #  Extra: [model] (torch + smp). Building downloads ImageNet weights (needs internet).
 # ════════════════════════════════════════════════════════════════════════════

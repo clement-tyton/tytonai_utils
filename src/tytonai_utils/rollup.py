@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 NODATA = 0  # value for classes not covered by a remapping (0 is unused by the class list)
 
@@ -126,7 +127,7 @@ def rollup_annotations(
     """
     annotations_dir, out_dir = Path(annotations_dir), Path(out_dir)
     written = []
-    for tile in _read_manifest(manifest):
+    for tile in tqdm(_read_manifest(manifest), desc="rollup masks"):
         dst = out_dir / tile["mask_file"]
         _rollup_mask_file(annotations_dir / tile["mask_file"], dst, remapping, mask_key, nodata)
         written.append(dst)
