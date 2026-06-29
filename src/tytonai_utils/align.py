@@ -30,14 +30,27 @@ def _read_manifest(manifest) -> list[dict]:
     return manifest
 
 
+def _as_2d_mask(arr) -> np.ndarray:
+    """Coerce a mask array to 2D without destroying degenerate shapes.
+
+    Drops a singleton channel axis from 3D ((1,H,W) or (H,W,1) -> (H,W)) and promotes a 1-D
+    strip to (1, N). A blanket .squeeze() turns a 1-row mask (1, W) into 1-D, which then breaks
+    height/width indexing downstream — this avoids that.
+    """
+    arr = np.asarray(arr)
+    if arr.ndim == 3:
+        arr = arr[0] if arr.shape[0] == 1 else (arr[..., 0] if arr.shape[-1] == 1 else arr[0])
+    return np.atleast_2d(arr)
+
+
 def _load_mask(path: str | Path, key: str | None = None) -> np.ndarray:
-    """Load a 2D mask array from an .npz (named key, else the largest array that squeezes 2D)."""
+    """Load a 2D mask array from an .npz (named key, else the largest 2D-coercible array)."""
     with np.load(path) as npz:
         if key is not None:
-            return np.asarray(npz[key]).squeeze()
-        flat = [npz[k] for k in npz.files if np.asarray(npz[k]).squeeze().ndim == 2]
-        chosen = max(flat or [npz[k] for k in npz.files], key=lambda a: a.size)
-        return np.asarray(chosen).squeeze()
+            return _as_2d_mask(npz[key])
+        cands = [_as_2d_mask(npz[k]) for k in npz.files]
+        two_d = [a for a in cands if a.ndim == 2]
+        return max(two_d or cands, key=lambda a: a.size)
 
 
 def _mask_datasets(annotations_dir: Path, manifest: list[dict], mask_key, nodata):

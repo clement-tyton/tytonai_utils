@@ -62,13 +62,21 @@ def _get_named(arrays, name) -> np.ndarray | None:
     return None if key is None else np.asarray(arrays[key]).squeeze()
 
 
+def _as_2d_mask(arr) -> np.ndarray:
+    """Coerce a mask to 2D without destroying degenerate shapes ((1, W) must stay 2D, not 1-D)."""
+    arr = np.asarray(arr)
+    if arr.ndim == 3:
+        arr = arr[0] if arr.shape[0] == 1 else (arr[..., 0] if arr.shape[-1] == 1 else arr[0])
+    return np.atleast_2d(arr)
+
+
 def _pick_mask_array(arrays, key=None) -> np.ndarray:
-    """The mask: explicit key, else the largest array that squeezes to 2D."""
+    """The mask: explicit key, else the largest 2D-coercible array."""
     if key is not None:
-        return np.asarray(arrays[key]).squeeze()
-    flat = [a for a in arrays.values() if np.asarray(a).squeeze().ndim == 2]
-    chosen = max(flat, key=lambda a: a.size) if flat else max(arrays.values(), key=lambda a: a.size)
-    return np.asarray(chosen).squeeze()
+        return _as_2d_mask(arrays[key])
+    cands = [_as_2d_mask(a) for a in arrays.values()]
+    two_d = [a for a in cands if a.ndim == 2]
+    return max(two_d or cands, key=lambda a: a.size)
 
 
 def _index_mask(mask: np.ndarray, id_to_idx: dict[int, int]) -> np.ndarray:
