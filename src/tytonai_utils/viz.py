@@ -211,9 +211,11 @@ def plot_image_mask_tiles(
     """Plot imagery .tif next to mask .tif, paired BY FILENAME across two folders.
 
     For grid-aligned outputs: `image_dir` from download_grid, `mask_dir` from
-    realign_annotations_to_grid — tiles match on name (tile_NNNNN.tif). No manifest needed.
-    Pairs are the tiles present in BOTH folders; selects `indexes` else `n` random (seeded).
-    `bands` are 1-based GeoTIFF bands for RGB. Needs rasterio (the `webmap` extra).
+    realign_annotations_to_grid — paired on identical filename. No manifest needed. Pairs are
+    the tiles present in BOTH folders, so a mask subset (e.g. masks only where annotations
+    intersect the full-webmap RGB) is fine. Both globs are top-level only — point at the folder
+    that directly holds the .tif (e.g. RGB/study_area, not RGB). Selects `indexes` else `n`
+    random (seeded). `bands` are 1-based GeoTIFF bands for RGB. Needs rasterio (`webmap` extra).
     """
     import rasterio
 
@@ -222,9 +224,21 @@ def plot_image_mask_tiles(
 
         class_names = CLASS_NAMES
     image_dir, mask_dir = Path(image_dir), Path(mask_dir)
-    names = sorted(p.name for p in mask_dir.glob("*.tif") if (image_dir / p.name).exists())
+    img_tifs = {p.name for p in image_dir.glob("*.tif")}
+    mask_tifs = {p.name for p in mask_dir.glob("*.tif")}
+    names = sorted(img_tifs & mask_tifs)  # paired by identical filename; a subset (masks ⊂ RGB) is fine
     if not names:
-        raise FileNotFoundError(f"no matching tile_*.tif in both {image_dir} and {mask_dir}")
+        def _hint(d: Path, found: set) -> str:
+            subs = [s.name for s in d.iterdir() if s.is_dir()] if d.exists() else []
+            if not d.exists():
+                return " (does not exist)"
+            return f" — no .tif here; subfolders: {subs[:5]}" if not found and subs else ""
+
+        raise FileNotFoundError(
+            "no matching *.tif filename in both folders:\n"
+            f"  image_dir={image_dir}: {len(img_tifs)} .tif{_hint(image_dir, img_tifs)}\n"
+            f"  mask_dir ={mask_dir}: {len(mask_tifs)} .tif{_hint(mask_dir, mask_tifs)}"
+        )
     chosen = _select(len(names), indexes, n, seed)
 
     imgs, masks, labels = [], [], []

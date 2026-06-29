@@ -7,7 +7,7 @@ Features (built incrementally):
 4. Mask rollup      — remap annotation mask categories.
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 # Force a non-interactive (Agg) matplotlib backend on import. The threaded downloads
 # (e.g. download_grid) clash with GUI backends like Tk and can HARD-CRASH the interpreter
